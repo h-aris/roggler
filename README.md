@@ -1,4 +1,4 @@
-# POE.ninja Advanced Analysis Tool
+# Roggler
 
 A comprehensive tool for analyzing Path of Exile build data from POE.ninja with advanced attribute grouping and aggregation capabilities.
 
