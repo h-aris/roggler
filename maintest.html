@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Main Test - Complete Item Analysis</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #1a1a1a; 
+            color: #e0e0e0; 
+            margin: 0;
+            display: flex;
+        }
+        .sidebar {
+            width: 250px;
+            background: #0a0a0a;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            border-right: 2px solid #2a2a2a;
+        }
+        .sidebar h3 {
+            color: #4a9eff;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .sidebar a {
+            display: block;
+            color: #e0e0e0;
+            text-decoration: none;
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .sidebar a:hover {
+            background: #2a2a2a;
+        }
+        .sidebar a.active {
+            background: #4a9eff;
+            color: white;
+        }
+        .sidebar .section {
+            margin-bottom: 20px;
+        }
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        .analysis-panel {
+            flex: 1;
+            min-width: 0;
+        }
+        .aggregation-panel {
+            width: 600px;
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .aggregation-panel.active {
+            display: flex;
+        }
+        .aggregation-section {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        .aggregation-section h3 {
+            margin: 0 0 10px 0;
+            color: #4a9eff;
+            font-size: 16px;
+        }
+        .aggregation-section.itemmods {
+            flex: 1;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .aggregation-section.skills {
+            flex: 1;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .aggregation-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #2a2a2a;
+            font-size: 14px;
+        }
+        .aggregation-item:last-child {
+            border-bottom: none;
+        }
+        .aggregation-name {
+            flex: 1;
+            color: #e0e0e0;
+        }
+        .aggregation-count {
+            width: 60px;
+            text-align: right;
+            color: #51cf66;
+        }
+        .aggregation-percentage {
+            width: 50px;
+            text-align: right;
+            color: #4a9eff;
+        }
+        .aggregation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .close-aggregation {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .aggregation-status {
+            color: #ffc107;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .container {
+            width: 100%;
+            margin: 0;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-family: monospace;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            background: #4a9eff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .rare-items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .rare-item-button {
+            padding: 15px;
+            background: #2a2a2a;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            font-weight: bold;
+        }
+        .rare-item-button:hover {
+            border-color: #4a9eff;
+            background: #3a3a3a;
+        }
+        .rare-item-button.selected {
+            border-color: #51cf66;
+            background: #1a3a1a;
+        }
+        .analysis-section {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .analysis-section.active {
+            display: block;
+        }
+        .dimension-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .dimension-button {
+            padding: 10px 20px;
+            background: #5a5a5a;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .dimension-button:hover {
+            background: #6a6a6a;
+        }
+        .dimension-button.active {
+            background: #4a9eff;
+        }
+        .results-section {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        .results-section.active {
+            display: block;
+        }
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #3a3a3a;
+        }
+        .result-item.clickable-group {
+            background: #1a1a1a;
+            border-left: 3px solid #4a9eff;
+            cursor: pointer;
+            transition: background 0.3s;
+            padding: 8px 12px;
+            margin: 0 -12px;
+        }
+        .result-item.clickable-group:hover {
+            background: #2a2a2a;
+        }
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        .result-name {
+            flex: 1;
+            font-family: monospace;
+        }
+        .result-count {
+            margin: 0 15px;
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .result-percentage {
+            color: #51cf66;
+            font-weight: bold;
+            min-width: 60px;
+            text-align: right;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+        }
+        .messages {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 13px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .message.success { color: #51cf66; }
+        .message.error { color: #ff6b6b; }
+        .message.warning { color: #ffc107; }
+        .message.info { color: #4a9eff; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h3>🔮 POE Ninja Project</h3>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Main Tools</h4>
+            <a href="poe-ninja-recreation.html">🏠 POE Ninja Recreation</a>
+            <a href="turquoise-test.html">🧪 Turquoise Test</a>
+            <a href="dictionary-collector.html">📚 Dictionary Collector</a>
+            <a href="maintest.html" class="active">🎯 Main Test</a>
+        </div>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Testing & Debug</h4>
+            <a href="dictionary-test.html">🔍 Dictionary Test</a>
+            <a href="original-test-recreation.html">📋 Original Test Recreation</a>
+            <a href="test-correct-api.html">✅ Test Correct API</a>
+            <a href="analyze-saved-data.html">📊 Analyze Saved Data</a>
+        </div>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Legacy</h4>
+            <a href="test.html">🧪 Legacy Test</a>
+            <a href="debug.html">🐛 Debug</a>
+            <a href="index.html">📄 Index</a>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div class="analysis-panel">
+        <div class="container">
+            <h1>Main Test - Complete Item Analysis</h1>
+            <p>Comprehensive analysis tool with smart dictionary fallback system</p>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label for="snapshotId">Snapshot ID:</label>
+                    <input type="text" id="snapshotId" value="2006-20251102-24503">
+                </div>
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="message info">Select a rare item to analyze</div>
+            </div>
+            
+            <h3>Select Rare Item Type:</h3>
+            <div class="rare-items-grid" id="rareItemsGrid"></div>
+            
+            <div class="analysis-section" id="analysisSection">
+                <h3 id="analysisTitle">Analysis Results</h3>
+                <div class="stats" id="analysisStats"></div>
+                
+                <h4>Select Dimension to Analyze:</h4>
+                <div class="dimension-buttons" id="dimensionButtons"></div>
+                
+                <div class="results-section" id="resultsSection">
+                    <h4 id="resultsTitle">Results</h4>
+                    <div class="stats" id="resultsStats"></div>
+                    <div id="resultsList"></div>
+                </div>
+            </div>
+        </div>
+        </div>
+        
+        <div class="aggregation-panel" id="aggregationPanel">
+            <div class="aggregation-header">
+                <h2 id="aggregationTitle">Attribute Group Analysis</h2>
+                <button class="close-aggregation" onclick="closeAggregationPanel()">✕</button>
+            </div>
+            <div class="aggregation-status" id="aggregationStatus">Loading...</div>
+            
+            <div class="aggregation-section itemmods">
+                <h3>Item Modifiers</h3>
+                <div id="itemmodsResults">No data</div>
+            </div>
+            
+            <div class="aggregation-section skills">
+                <h3>Skills</h3>
+                <div id="skillsResults">No data</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="protobuf-decoder.js"></script>
+    <script>
+        const rareItems = [
+            "Rare Amulet", "Rare Belt", "Rare Body Armour", "Rare Boots", "Rare Bow", 
+            "Rare Claw", "Rare Dagger", "Rare Gloves", "Rare Graft", "Rare Helmet", 
+            "Rare Jewel", "Rare One Handed Axe", "Rare One Handed Mace", "Rare One Handed Sword", 
+            "Rare Quiver", "Rare Ring", "Rare Shield", "Rare Staff", "Rare Two Handed Axe", 
+            "Rare Two Handed Mace", "Rare Two Handed Sword", "Rare Wand"
+        ];
+        
+        let currentData = null;
+        let currentDictionaries = {};
+        let selectedRareItem = null;
+        
+        function addMessage(message, type = 'info') {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function createRareItemGrid() {
+            const grid = document.getElementById('rareItemsGrid');
+            
+            rareItems.forEach((rareItem, index) => {
+                const button = document.createElement('div');
+                button.className = 'rare-item-button';
+                button.textContent = rareItem;
+                button.onclick = () => selectRareItem(rareItem, button);
+                grid.appendChild(button);
+            });
+        }
+        
+        async function selectRareItem(rareItem, buttonElement) {
+            // Clear previous selection
+            document.querySelectorAll('.rare-item-button').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            buttonElement.classList.add('selected');
+            
+            selectedRareItem = rareItem;
+            document.getElementById('analysisSection').classList.remove('active');
+            document.getElementById('resultsSection').classList.remove('active');
+            
+            addMessage(`Selected: ${rareItem}. Starting analysis...`, 'info');
+            
+            await fetchAndAnalyze(rareItem);
+        }
+        
+        async function fetchAndAnalyze(rareItem) {
+            try {
+                const snapshotId = document.getElementById('snapshotId').value.trim();
+                const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=keepers&type=exp`;
+                const proxyUrl = apiUrl.replace('https://poe.ninja', '/api');
+                
+                addMessage(`Fetching data for ${rareItem}...`, 'info');
+                
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status} - ${response.statusText}`);
+                }
+                
+                const data = await response.arrayBuffer();
+                const decoded = ProtobufDecoder.NinjaSearchResult.fromBinary(data);
+                currentData = decoded;
+                
+                addMessage(`✅ Data fetched successfully! Found ${decoded.result.dimensions?.length || 0} dimensions`, 'success');
+                
+                // Try to load dictionaries from API
+                const dictionariesLoaded = await loadDictionaries(decoded, rareItem);
+                
+                if (dictionariesLoaded) {
+                    // Display analysis options only if we have dictionaries
+                    displayAnalysisOptions(decoded, rareItem);
+                } else {
+                    // Hide analysis section and show retry message
+                    document.getElementById('analysisSection').classList.remove('active');
+                    document.getElementById('resultsSection').classList.remove('active');
+                    
+                    addMessage(`🚫 Analysis cannot proceed without dictionaries from the API.`, 'error');
+                    addMessage(`🔄 Try selecting ${rareItem} again in a few minutes.`, 'info');
+                    addMessage(`📊 The API inconsistently returns dictionaries - this is normal.`, 'info');
+                }
+                
+            } catch (error) {
+                addMessage(`❌ Error: ${error.message}`, 'error');
+                console.error('Fetch error:', error);
+            }
+        }
+        
+        async function loadDictionaries(decoded, rareItem) {
+            currentDictionaries = {};
+            
+            // Only use API dictionaries - no fallbacks to avoid wrong data
+            if (decoded.result.dictionaries && decoded.result.dictionaries.length > 0) {
+                addMessage(`🔍 Found ${decoded.result.dictionaries.length} dictionary references in API. Fetching...`, 'info');
+                
+                let apiDictCount = 0;
+                for (const dictRef of decoded.result.dictionaries) {
+                    try {
+                        const response = await fetch(`/api/poe1/api/builds/dictionary/${dictRef.hash}`);
+                        if (response.ok) {
+                            const dictData = await response.arrayBuffer();
+                            const dictionary = ProtobufDecoder.SearchResultDictionary.fromBinary(dictData);
+                            currentDictionaries[dictRef.id] = {
+                                values: dictionary.values || [],
+                                source: 'api'
+                            };
+                            apiDictCount++;
+                        }
+                    } catch (e) {
+                        console.error(`Failed to fetch dictionary ${dictRef.id}:`, e);
+                    }
+                }
+                
+                if (apiDictCount > 0) {
+                    addMessage(`✅ Loaded ${apiDictCount} dictionaries from API`, 'success');
+                    
+                    // Show detailed dictionary summary
+                    const dictSummary = Object.entries(currentDictionaries).map(([id, dict]) => 
+                        `${id}: ${dict.values.length} values (${dict.source})`
+                    ).join(', ');
+                    
+                    addMessage(`📚 Total dictionaries available: ${Object.keys(currentDictionaries).length}`, 'info');
+                    addMessage(`📋 Dictionary details: ${dictSummary}`, 'info');
+                    
+                    return true; // Success
+                } else {
+                    addMessage(`❌ API dictionaries failed to load`, 'error');
+                    return false; // Failed
+                }
+            } else {
+                addMessage(`❌ No dictionary references in API response`, 'error');
+                addMessage(`🔄 The API is not returning dictionaries for ${rareItem} right now.`, 'warning');
+                addMessage(`💡 Please try again in a few minutes - the API sometimes returns dictionaries inconsistently.`, 'info');
+                return false; // No dictionaries available
+            }
+        }
+        
+        function displayAnalysisOptions(decoded, rareItem) {
+            const analysisSection = document.getElementById('analysisSection');
+            const analysisTitle = document.getElementById('analysisTitle');
+            const analysisStats = document.getElementById('analysisStats');
+            const dimensionButtons = document.getElementById('dimensionButtons');
+            
+            analysisTitle.textContent = `Analysis: ${rareItem}`;
+            
+            // Calculate true total
+            const secondAscendancyDimension = decoded.result.dimensions.find(d => d.id === 'secondascendancy');
+            const trueTotal = secondAscendancyDimension ? 
+                secondAscendancyDimension.counts.reduce((sum, count) => sum + count.count, 0) : 
+                decoded.result.total;
+            
+            // Display stats
+            analysisStats.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-number">${trueTotal}</div>
+                    <div class="stat-label">True Total</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${decoded.result.total}</div>
+                    <div class="stat-label">API Total</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${decoded.result.dimensions?.length || 0}</div>
+                    <div class="stat-label">Dimensions</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${Object.keys(currentDictionaries).length}</div>
+                    <div class="stat-label">Dictionaries</div>
+                </div>
+            `;
+            
+            // Find target dimensions: skills, itembasetypes, itemmods (with possible suffixes)
+            const targetDimensions = decoded.result.dimensions.filter(d => {
+                return d.id === 'skills' || 
+                       d.id.startsWith('itembasetypes') || 
+                       d.id.startsWith('itemmods');
+            });
+            
+            // Create dimension buttons
+            dimensionButtons.innerHTML = '';
+            targetDimensions.forEach(dimension => {
+                const button = document.createElement('button');
+                button.className = 'dimension-button';
+                button.textContent = dimension.id;
+                button.onclick = () => analyzeDimension(dimension, button);
+                dimensionButtons.appendChild(button);
+            });
+            
+            analysisSection.classList.add('active');
+            
+            if (targetDimensions.length === 0) {
+                addMessage(`⚠️ No target dimensions (skills, itembasetypes, itemmods) found`, 'warning');
+            } else {
+                addMessage(`✅ Found ${targetDimensions.length} target dimensions`, 'success');
+            }
+        }
+        
+        function analyzeDimension(dimension, buttonElement) {
+            // Clear previous selection
+            document.querySelectorAll('.dimension-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            buttonElement.classList.add('active');
+            
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsTitle = document.getElementById('resultsTitle');
+            const resultsStats = document.getElementById('resultsStats');
+            const resultsList = document.getElementById('resultsList');
+            
+            // Find appropriate dictionary
+            let dictionaryId = dimension.dictionaryId;
+            const dictionary = currentDictionaries[dictionaryId];
+            
+            if (!dictionary) {
+                addMessage(`❌ Dictionary "${dictionaryId}" not found. Available: ${Object.keys(currentDictionaries).join(', ')}`, 'error');
+                return;
+            }
+            
+            addMessage(`🔍 Using dictionary "${dictionaryId}" with ${dictionary.values.length} values from ${dictionary.source}`, 'info');
+            
+            // Calculate true total
+            const secondAscendancyDimension = currentData.result.dimensions.find(d => d.id === 'secondascendancy');
+            const trueTotal = secondAscendancyDimension ? 
+                secondAscendancyDimension.counts.reduce((sum, count) => sum + count.count, 0) : 
+                currentData.result.total;
+            
+            // Process data with grouping for specific cases
+            const processedData = dimension.counts.map(count => {
+                let name = dictionary.values[count.key] || `Key_${count.key}`;
+                
+                return {
+                    key: count.key,
+                    name: name,
+                    count: count.count,
+                    percentage: ((count.count / trueTotal) * 100).toFixed(1),
+                    resolved: !!dictionary.values[count.key]
+                };
+            });
+            
+            // Apply attribute grouping for relevant dimensions
+            let finalData = processedData;
+            if (dimension.id.startsWith('itembasetypes-')) {
+                finalData = applyAttributeGrouping(processedData, dimension.id);
+            }
+            
+            // Sort by count
+            finalData.sort((a, b) => b.count - a.count);
+            
+            // Show top 50
+            const top50 = finalData.slice(0, 50);
+            const totalResolved = finalData.filter(item => item.resolved).length;
+            const totalUnresolved = finalData.filter(item => !item.resolved).length;
+            
+            // Update UI
+            resultsTitle.textContent = `${dimension.id} - Top 50 Results`;
+            
+            resultsStats.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-number">${processedData.length}</div>
+                    <div class="stat-label">Total Items</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${totalResolved}</div>
+                    <div class="stat-label">Resolved</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${totalUnresolved}</div>
+                    <div class="stat-label">Unresolved</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${dictionary.source}</div>
+                    <div class="stat-label">Dict Source</div>
+                </div>
+            `;
+            
+            resultsList.innerHTML = top50.map(item => `
+                <div class="result-item ${item.isGroup ? 'clickable-group' : ''}" ${item.isGroup ? `onclick="analyzeAttributeGroup('${item.key}', '${item.name}', ${JSON.stringify(item).replace(/"/g, '&quot;')})"` : ''}>
+                    <span class="result-name" style="color: ${item.resolved ? '#e0e0e0' : '#ff6b6b'}; ${item.isGroup ? 'font-weight: bold; cursor: pointer;' : ''}">${item.name}</span>
+                    <span class="result-count">${item.count}</span>
+                    <span class="result-percentage">${item.percentage}%</span>
+                </div>
+            `).join('');
+            
+            resultsSection.classList.add('active');
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+            
+            addMessage(`✅ Analyzed ${dimension.id}: ${totalResolved}/${finalData.length} names resolved (${dictionary.source})`, 'success');
+        }
+        
+        function applyAttributeGrouping(processedData, dimensionId) {
+            // Extract category from dimension ID (e.g., "itembasetypes-Boots" -> "Boots")
+            const category = dimensionId.replace('itembasetypes-', '');
+            
+            // Map dimension names to data structure names
+            const categoryMap = {
+                'BodyArmour': 'Body Armour',
+                'Boots': 'Boots',
+                'Gloves': 'Gloves', 
+                'Helmet': 'Helmets',
+                'Shield': 'Shield'
+            };
+            
+            const dataCategory = categoryMap[category];
+            if (!dataCategory) {
+                return processedData; // No grouping for this category
+            }
+            
+            // Complete attribute grouping data
+            const attributeGroups = {
+                "Body Armour": {
+                    "Dex": ["Syndicate's Garb", "Astral Leather", "Supreme Leather", "Assassin's Garb", "Zodiac Leather", "Exquisite Leather", "Destiny Leather", "Sharkskin Tunic", "Cutthroat's Garb", "Coronal Leather", "Glorious Leather", "Frontier Leather", "Eelskin Tunic", "Thief's Garb", "Sun Leather", "Full Leather", "Wild Leather", "Buckskin Tunic", "Strapped Leather", "Shabby Jerkin"],
+                    "DexInt": ["Necrotic Armour", "Torturer Garb", "Sanguine Raiment", "Carnal Armour", "Sadist Garb", "Blood Raiment", "Varnished Coat", "Sentinel Jacket", "Crypt Armour", "Lacquered Garb", "Crimson Raiment", "Sleek Coat", "Quilted Jacket", "Bone Armour", "Waxed Garb", "Scarlet Raiment", "Oiled Coat", "Padded Jacket", "Oiled Vest", "Padded Vest"],
+                    "Int": ["Twilight Regalia", "Nightweave Robe", "Arcane Vestment", "Vaal Regalia", "Widowsilk Robe", "Occultist's Vestment", "Necromancer Silks", "Savant's Robe", "Destroyer Regalia", "Spidersilk Robe", "Conjurer's Vestment", "Silken Wrap", "Sage's Robe", "Cabalist Regalia", "Silk Robe", "Mage's Vestment", "Silken Garb", "Scholar's Robe", "Silken Vest", "Simple Robe"],
+                    "Str": ["Royal Plate", "Legion Plate", "Titan Plate", "Glorious Plate", "Gladiator Plate", "Astral Plate", "Crusader Plate", "Golden Plate", "Majestic Plate", "Colosseum Plate", "Sun Plate", "Battle Plate", "Bronze Plate", "Lordly Plate", "Arena Plate", "Full Plate", "War Plate", "Copper Plate", "Chestplate", "Plate Vest"],
+                    "StrDex": ["Conquest Lamellar", "Marshall's Brigandine", "Full Wyvernscale", "Triumphant Lamellar", "General's Brigandine", "Full Dragonscale", "Desert Brigandine", "Dragonscale Doublet", "Battle Lamellar", "Commander's Brigandine", "Full Wyrmscale", "Hussar Brigandine", "Wyrmscale Doublet", "Field Lamellar", "Soldier's Brigandine", "Full Scale Armour", "Infantry Brigandine", "Scale Doublet", "Light Brigandine", "Scale Vest"],
+                    "StrInt": ["Sacred Chainmail", "Paladin's Hauberk", "Grand Ringmail", "Saintly Chainmail", "Saint's Hauberk", "Elegant Ringmail", "Conquest Chainmail", "Loricated Ringmail", "Devout Chainmail", "Chain Hauberk", "Ornate Ringmail", "Crusader Chainmail", "Latticed Ringmail", "Holy Chainmail", "Full Chainmail", "Full Ringmail", "Chainmail Doublet", "Ringmail Coat", "Chainmail Tunic", "Chainmail Vest"]
+                },
+                "Boots": {
+                    "Dex": ["Velour Boots", "Stormrider Boots", "Harpyskin Boots", "Slink Boots", "Stealth Boots", "Shagreen Boots", "Windbreak Boots", "Sharkskin Boots", "Eelskin Boots", "Nubuck Boots", "Deerskin Boots", "Cloudwhisper Boots", "Goathide Boots", "Rawhide Boots"],
+                    "DexInt": ["Phantom Boots", "Infiltrator Boots", "Fugitive Boots", "Murder Boots", "Assassin's Boots", "Carnal Boots", "Ambush Boots", "Trapper Boots", "Shackled Boots", "Clasped Boots", "Strapped Boots", "Wrapped Boots"],
+                    "Int": ["Warlock Boots", "Dreamquest Slippers", "Sage Slippers", "Sorcerer Boots", "Arcanist Slippers", "Conjurer Boots", "Nightwind Slippers", "Samite Slippers", "Satin Slippers", "Scholar Boots", "Silk Slippers", "Duskwalk Slippers", "Velvet Slippers", "Wool Shoes"],
+                    "Str": ["Leviathan Greaves", "Brimstone Treads", "Precursor Greaves", "Titan Greaves", "Vaal Greaves", "Goliath Greaves", "Darksteel Treads", "Ancient Greaves", "Antique Greaves", "Reinforced Greaves", "Plated Greaves", "Basemetal Treads", "Steel Greaves", "Iron Greaves"],
+                    "StrDex": ["Wyvernscale Boots", "Chimerascale Boots", "Two-Toned Boots", "Dragonscale Boots", "Hydrascale Boots", "Wyrmscale Boots", "Serpentscale Boots", "Steelscale Boots", "Bronzescale Boots", "Ironscale Boots", "Leatherscale Boots"],
+                    "StrInt": ["Paladin Boots", "Martyr Boots", "Crusader Boots", "Legion Boots", "Soldier Boots", "Zealot Boots", "Riveted Boots", "Mesh Boots", "Ringmail Boots", "Chain Boots"]
+                },
+                "Gloves": {
+                    "Dex": ["Velour Gloves", "Harpyskin Gloves", "Trapsetter Gloves", "Slink Gloves", "Gripped Gloves", "Stealth Gloves", "Shagreen Gloves", "Sharkskin Gloves", "Apprentice Gloves", "Eelskin Gloves", "Nubuck Gloves", "Deerskin Gloves", "Tinker Gloves", "Goathide Gloves", "Rawhide Gloves"],
+                    "DexInt": ["Phantom Mitts", "Infiltrator Mitts", "Murder Mitts", "Assassin's Mitts", "Carnal Mitts", "Ambush Mitts", "Trapper Mitts", "Clasped Mitts", "Strapped Mitts", "Wrapped Mitts"],
+                    "Int": ["Warlock Gloves", "Sage Gloves", "Nexus Gloves", "Fingerless Silk Gloves", "Sorcerer Gloves", "Arcanist Gloves", "Conjurer Gloves", "Samite Gloves", "Satin Gloves", "Aetherwind Gloves", "Embroidered Gloves", "Silk Gloves", "Velvet Gloves", "Leyline Gloves", "Wool Gloves"],
+                    "Str": ["Leviathan Gauntlets", "Precursor Gauntlets", "Thwarting Gauntlets", "Spiked Gloves", "Titan Gauntlets", "Vaal Gauntlets", "Goliath Gauntlets", "Ancient Gauntlets", "Guarding Gauntlets", "Antique Gauntlets", "Steel Gauntlets", "Bronze Gauntlets", "Plated Gauntlets", "Preserving Gauntlets", "Iron Gauntlets"],
+                    "StrDex": ["Wyvernscale Gauntlets", "Chimerascale Gauntlets", "Dragonscale Gauntlets", "Hydrascale Gauntlets", "Wyrmscale Gauntlets", "Serpentscale Gauntlets", "Steelscale Gauntlets", "Bronzescale Gauntlets", "Ironscale Gauntlets", "Fishscale Gauntlets"],
+                    "StrInt": ["Paladin Gloves", "Martyr Gloves", "Apothecary's Gloves", "Crusader Gloves", "Legion Gloves", "Soldier Gloves", "Zealot Gloves", "Riveted Gloves", "Mesh Gloves", "Ringmail Gloves", "Chain Gloves"]
+                },
+                "Helmets": {
+                    "Dex": ["Majestic Pelt", "Grizzly Pelt", "Dire Pelt", "Lion Pelt", "Sinner Tricorne", "Silken Hood", "Ursine Pelt", "Noble Tricorne", "Hunter Hood", "Wolf Pelt", "Leather Hood", "Tricorne", "Leather Cap"],
+                    "DexInt": ["Torturer's Mask", "Ancient Mask", "Blizzard Crown", "Jester Mask", "Deicide Mask", "Vaal Mask", "Harlequin Mask", "Regicide Mask", "Winter Crown", "Callous Mask", "Raven Mask", "Golden Mask", "Festival Mask", "Iron Mask", "Gale Crown", "Plague Mask", "Scare Mask"],
+                    "Int": ["Lich's Circlet", "Sunfire Circlet", "Moonlit Circlet", "Hubris Circlet", "Mind Cage", "Solaris Circlet", "Necromancer Circlet", "Steel Circlet", "Lunaris Circlet", "Bone Circlet", "Tribal Circlet", "Torture Cage", "Iron Circlet", "Vine Circlet"],
+                    "Str": ["Giantslayer Helmet", "Conqueror's Helmet", "General's Helmet", "Eternal Burgonet", "Royal Burgonet", "Ezomyte Burgonet", "Samnite Helmet", "Siege Helmet", "Reaver Helmet", "Gladiator Helmet", "Close Helmet", "Barbute Helmet", "Cone Helmet", "Iron Hat"],
+                    "StrDex": ["Haunted Bascinet", "Conquest Helmet", "Penitent Mask", "Knight Helm", "Nightmare Bascinet", "Pig-Faced Bascinet", "Fluted Bascinet", "Lacquered Helmet", "Atonement Mask", "Fencer Helm", "Secutor Helm", "Gilded Sallet", "Visored Sallet", "Sorrow Mask", "Sallet", "Battered Helm"],
+                    "StrInt": ["Divine Crown", "Paladin Crown", "Archdemon Crown", "Faithful Helmet", "Bone Helmet", "Praetor Crown", "Prophet Crown", "Magistrate Crown", "Great Crown", "Demon Crown", "Zealot Helmet", "Aventail Helmet", "Crusader Helmet", "Great Helmet", "Imp Crown", "Soldier Helmet", "Rusted Coif"]
+                },
+                "Shield": {
+                    "Dex": ["Imperial Buckler", "Crusader Buckler", "Vaal Buckler", "Lacquered Buckler", "Ironwood Buckler", "Golden Buckler", "Battle Buckler", "Corrugated Buckler", "Enameled Buckler", "Oak Buckler", "Gilded Buckler", "War Buckler", "Hammered Buckler", "Painted Buckler", "Pine Buckler", "Goathide Buckler"],
+                    "DexInt": ["Supreme Spiked Shield", "Mirrored Spiked Shield", "Ezomyte Spiked Shield", "Alder Spiked Shield", "Sovereign Spiked Shield", "Polished Spiked Shield", "Compound Spiked Shield", "Redwood Spiked Shield", "Ornate Spiked Shield", "Burnished Spiked Shield", "Alloyed Spiked Shield", "Driftwood Spiked Shield", "Spiked Bundle"],
+                    "Int": ["Titanium Spirit Shield", "Harmonic Spirit Shield", "Vaal Spirit Shield", "Lacewood Spirit Shield", "Thorium Spirit Shield", "Chiming Spirit Shield", "Fossilised Spirit Shield", "Ivory Spirit Shield", "Bone Spirit Shield", "Ancient Spirit Shield", "Walnut Spirit Shield", "Brass Spirit Shield", "Jingling Spirit Shield", "Tarnished Spirit Shield", "Yew Spirit Shield", "Twig Spirit Shield"],
+                    "Str": ["Pinnacle Tower Shield", "Colossal Tower Shield", "Ezomyte Tower Shield", "Ebony Tower Shield", "Shagreen Tower Shield", "Crested Tower Shield", "Girded Tower Shield", "Bronze Tower Shield", "Mahogany Tower Shield", "Buckskin Tower Shield", "Painted Tower Shield", "Reinforced Tower Shield", "Copper Tower Shield", "Cedar Tower Shield", "Rawhide Tower Shield", "Corroded Tower Shield", "Splintered Tower Shield"],
+                    "StrDex": ["Elegant Round Shield", "Cardinal Round Shield", "Spiny Round Shield", "Teak Round Shield", "Baroque Round Shield", "Crimson Round Shield", "Spiked Round Shield", "Maple Round Shield", "Splendid Round Shield", "Scarlet Round Shield", "Studded Round Shield", "Fir Round Shield", "Rotted Round Shield"],
+                    "StrInt": ["Archon Kite Shield", "Mosaic Kite Shield", "Champion Kite Shield", "Branded Kite Shield", "Angelic Kite Shield", "Laminated Kite Shield", "Steel Kite Shield", "Etched Kite Shield", "Ceremonial Kite Shield", "Layered Kite Shield", "Reinforced Kite Shield", "Linden Kite Shield", "Plank Kite Shield"]
+                }
+            };
+            
+            const categoryGroups = attributeGroups[dataCategory];
+            if (!categoryGroups) {
+                return processedData; // No grouping data for this category
+            }
+            
+            // Separate items into attribute groups and ungrouped items
+            const attributeMatches = {};
+            const ungroupedItems = [];
+            
+            // Initialize attribute groups
+            Object.keys(categoryGroups).forEach(attr => {
+                attributeMatches[attr] = [];
+            });
+            
+            // Classify each item
+            processedData.forEach(item => {
+                let matched = false;
+                
+                Object.keys(categoryGroups).forEach(attribute => {
+                    if (categoryGroups[attribute].includes(item.name)) {
+                        attributeMatches[attribute].push(item);
+                        matched = true;
+                    }
+                });
+                
+                if (!matched) {
+                    ungroupedItems.push(item);
+                }
+            });
+            
+            // Create grouped entries
+            const finalItems = [...ungroupedItems];
+            let totalGrouped = 0;
+            
+            Object.keys(attributeMatches).forEach(attribute => {
+                const items = attributeMatches[attribute];
+                if (items.length > 0) {
+                    const totalCount = items.reduce((sum, item) => sum + item.count, 0);
+                    const totalPercentage = items.reduce((sum, item) => sum + parseFloat(item.percentage), 0);
+                    
+                    const group = {
+                        key: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
+                        name: `${attribute} ${category} (${items.length} types)`,
+                        count: totalCount,
+                        percentage: totalPercentage.toFixed(1),
+                        resolved: true,
+                        isGroup: true,
+                        groupItems: items.map(item => `${item.name}: ${item.count} (${item.percentage}%)`).join(', ')
+                    };
+                    
+                    finalItems.push(group);
+                    totalGrouped += items.length;
+                }
+            });
+            
+            if (totalGrouped > 0) {
+                addMessage(`🔗 Grouped ${totalGrouped} ${category} items into ${Object.keys(attributeMatches).filter(attr => attributeMatches[attr].length > 0).length} attribute groups`, 'info');
+            }
+            
+            return finalItems;
+        }
+        
+        // Attribute Group Analysis Functions
+        async function analyzeAttributeGroup(groupKey, groupName, groupData) {
+            try {
+                const parsedData = typeof groupData === 'string' ? JSON.parse(groupData.replace(/&quot;/g, '"')) : groupData;
+                
+                addMessage(`🔄 Starting analysis for ${groupName}...`, 'info');
+                
+                // Show aggregation panel
+                const panel = document.getElementById('aggregationPanel');
+                const title = document.getElementById('aggregationTitle');
+                const status = document.getElementById('aggregationStatus');
+                
+                panel.classList.add('active');
+                title.textContent = `${groupName} Analysis`;
+                status.textContent = 'Preparing API calls...';
+                
+                // Extract category and attribute from group data
+                // Handle both "Int Helmet (14 types)" and "Int BodyArmour (20 types)" formats
+                const parts = groupName.split(' ');
+                const attribute = parts[0]; // e.g., "Int"
+                const category = parts[1]; // e.g., "Helmet" or "BodyArmour"
+                
+                // Get top 6 basetypes from the attribute groups data
+                const attributeGroups = getAttributeGroupsData();
+                const categoryMap = {
+                    'BodyArmour': 'Body Armour',
+                    'Boots': 'Boots',
+                    'Gloves': 'Gloves', 
+                    'Helmet': 'Helmets',
+                    'Shield': 'Shield'
+                };
+                
+                const dataCategory = categoryMap[category] || category;
+                const allBasetypes = attributeGroups[dataCategory]?.[attribute] || [];
+                
+                // Blacklist of problematic basetypes that cause hanging
+                const blacklistedBasetypes = [
+                    'Spiked Gloves'
+                ];
+                
+                // Filter out blacklisted items and take top 6
+                const filteredBasetypes = allBasetypes.filter(basetype => !blacklistedBasetypes.includes(basetype));
+                const top6Basetypes = filteredBasetypes.slice(0, 6);
+                
+                // Show blacklisted items if any were skipped
+                const skippedBasetypes = allBasetypes.filter(basetype => blacklistedBasetypes.includes(basetype));
+                if (skippedBasetypes.length > 0) {
+                    addMessage(`⚠️ Skipped blacklisted basetypes: ${skippedBasetypes.join(', ')}`, 'info');
+                }
+                
+                if (top6Basetypes.length === 0) {
+                    status.textContent = 'No basetypes found for this group';
+                    addMessage(`❌ No basetypes found for ${groupName}`, 'error');
+                    return;
+                }
+                
+                addMessage(`📊 Analyzing top ${top6Basetypes.length} basetypes: ${top6Basetypes.join(', ')}`, 'info');
+                status.textContent = `Making ${top6Basetypes.length} API calls...`;
+                
+                // Make API calls for each basetype - sequential to avoid browser connection limits
+                const snapshotId = document.getElementById('snapshotId').value.trim();
+                const results = [];
+                const errors = [];
+                
+                addMessage(`🔄 Making sequential API calls to avoid browser connection limits...`, 'info');
+                
+                for (let i = 0; i < top6Basetypes.length; i++) {
+                    const basetype = top6Basetypes[i];
+                    
+                    // Wrap entire basetype processing in a timeout promise
+                    const processBasetype = async () => {
+                        console.log(`🔍 [${basetype}] Starting processBasetype`);
+                        status.textContent = `API call ${i + 1}/${top6Basetypes.length}: ${basetype}...`;
+                        
+                        // Map category to correct rare item type (with spaces)
+                        const rareItemTypeMap = {
+                            'BodyArmour': 'Rare Body Armour',
+                            'Boots': 'Rare Boots',
+                            'Gloves': 'Rare Gloves',
+                            'Helmet': 'Rare Helmet',
+                            'Shield': 'Rare Shield'
+                        };
+                        const rareItemType = rareItemTypeMap[category] || `Rare ${category}`;
+                        const dimensionKey = `itembasetypes-${category}`;
+                        const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItemType)}&${dimensionKey}=${encodeURIComponent(basetype)}&overview=keepers&type=exp`;
+                        const proxyUrl = apiUrl.replace('https://poe.ninja', '/api');
+                        
+                        console.log(`🌐 [${basetype}] Making fetch to:`, proxyUrl);
+                        const response = await fetch(proxyUrl);
+                        console.log(`📥 [${basetype}] Fetch response received:`, response.status, response.ok);
+                        
+                        if (!response.ok) {
+                            throw new Error(`API request failed: ${response.status}`);
+                        }
+                        
+                        console.log(`📊 [${basetype}] Converting to arrayBuffer...`);
+                        const data = await response.arrayBuffer();
+                        console.log(`🔢 [${basetype}] ArrayBuffer size:`, data.byteLength);
+                        
+                        console.log(`🧩 [${basetype}] Decoding protobuf...`);
+                        const decoded = ProtobufDecoder.NinjaSearchResult.fromBinary(data);
+                        console.log(`✅ [${basetype}] Protobuf decoded, dimensions:`, decoded.result.dimensions?.length);
+                        
+                        // Load dictionaries for this call
+                        console.log(`📚 [${basetype}] Loading dictionaries...`);
+                        const dictionaries = await loadDictionariesForCall(decoded);
+                        console.log(`📖 [${basetype}] Dictionaries loaded:`, Object.keys(dictionaries).length);
+                        
+                        // Calculate true total from secondascendancy dimension (actual build count)
+                        console.log(`🎯 [${basetype}] Calculating true total...`);
+                        const secondAscendancyDimension = decoded.result.dimensions.find(d => d.id === 'secondascendancy');
+                        const trueTotal = secondAscendancyDimension ? 
+                            secondAscendancyDimension.counts.reduce((sum, count) => sum + count.count, 0) : 
+                            decoded.result.total;
+                        console.log(`📈 [${basetype}] True total calculated:`, trueTotal);
+                        
+                        console.log(`🎉 [${basetype}] processBasetype complete!`);
+                        return {
+                            basetype: basetype,
+                            data: decoded,
+                            dictionaries: dictionaries,
+                            total: trueTotal
+                        };
+                    };
+                    
+                    try {
+                        // Temporarily disable timeout to test if it's causing the hang
+                        // const result = await Promise.race([
+                        //     processBasetype(),
+                        //     new Promise((_, reject) => 
+                        //         setTimeout(() => reject(new Error('Request timed out (4s)')), 4000)
+                        //     )
+                        // ]);
+                        
+                        const result = await processBasetype();
+                        
+                        results.push(result);
+                        addMessage(`✅ Loaded data for ${basetype}: ${result.total} builds`, 'success');
+                        
+                    } catch (error) {
+                        errors.push({ basetype: basetype, error: error.message });
+                        addMessage(`❌ Failed to load ${basetype}: ${error.message}`, 'error');
+                        
+                        // Continue with next basetype instead of stopping
+                        continue;
+                    }
+                    
+                    // Small delay between requests to avoid connection issues
+                    if (i < top6Basetypes.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+                
+                if (results.length === 0) {
+                    status.textContent = 'All API calls failed';
+                    addMessage(`❌ All API calls failed for ${groupName}`, 'error');
+                    return;
+                }
+                
+                status.textContent = `Aggregating data from ${results.length} successful calls...`;
+                
+                // Aggregate the results
+                await aggregateAndDisplayResults(results, errors, groupName);
+                
+            } catch (error) {
+                addMessage(`❌ Error in attribute group analysis: ${error.message}`, 'error');
+                console.error('Attribute group analysis error:', error);
+            }
+        }
+        
+        async function loadDictionariesForCall(decoded) {
+            const dictionaries = {};
+            
+            if (decoded.result.dictionaries && decoded.result.dictionaries.length > 0) {
+                for (const dictRef of decoded.result.dictionaries) {
+                    try {
+                        const response = await fetch(`/api/poe1/api/builds/dictionary/${dictRef.hash}`);
+                        if (response.ok) {
+                            const dictData = await response.arrayBuffer();
+                            const dictionary = ProtobufDecoder.SearchResultDictionary.fromBinary(dictData);
+                            dictionaries[dictRef.id] = {
+                                values: dictionary.values || [],
+                                source: 'api'
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('Failed to load dictionary:', dictRef.id, e);
+                    }
+                }
+            }
+            
+            return dictionaries;
+        }
+        
+        async function aggregateAndDisplayResults(results, errors, groupName) {
+            const status = document.getElementById('aggregationStatus');
+            const itemmodsResults = document.getElementById('itemmodsResults');
+            const skillsResults = document.getElementById('skillsResults');
+            
+            // Calculate total builds across all successful calls
+            const totalBuilds = results.reduce((sum, result) => sum + result.total, 0);
+            
+            // Aggregate itemmods dimensions - avoid double counting across multiple itemmods dimensions
+            const itemmodsAggregated = {};
+            const skillsAggregated = {};
+            
+            for (const result of results) {
+                // Process itemmods dimensions - track modifiers per basetype to avoid duplicates
+                const itemmodsDimensions = result.data.result.dimensions?.filter(d => d.id.startsWith('itemmods')) || [];
+                const seenModifiers = new Map(); // Track highest count for each modifier name
+                
+                for (const dimension of itemmodsDimensions) {
+                    const dictionary = result.dictionaries[dimension.dictionaryId];
+                    if (!dictionary) continue;
+                    
+                    dimension.counts.forEach(count => {
+                        const name = dictionary.values[count.key] || `Key_${count.key}`;
+                        
+                        // Only use the highest count for this modifier (in case it appears in multiple dimensions)
+                        if (!seenModifiers.has(name) || count.count > seenModifiers.get(name).count) {
+                            seenModifiers.set(name, count);
+                        }
+                    });
+                }
+                
+                // Add the deduplicated modifiers to aggregated results
+                seenModifiers.forEach((count, name) => {
+                    const percentage = (count.count / result.total) * 100;
+                    
+                    if (!itemmodsAggregated[name]) {
+                        itemmodsAggregated[name] = { totalCount: 0, basetypes: [] };
+                    }
+                    
+                    itemmodsAggregated[name].totalCount += count.count;
+                    itemmodsAggregated[name].basetypes.push(`${result.basetype}: ${percentage.toFixed(1)}%`);
+                });
+                
+                // Process skills dimension
+                const skillsDimension = result.data.result.dimensions?.find(d => d.id === 'skills');
+                if (skillsDimension) {
+                    const dictionary = result.dictionaries[skillsDimension.dictionaryId];
+                    if (dictionary) {
+                        skillsDimension.counts.forEach(count => {
+                            const name = dictionary.values[count.key] || `Key_${count.key}`;
+                            const percentage = (count.count / result.total) * 100;
+                            
+                            if (!skillsAggregated[name]) {
+                                skillsAggregated[name] = { totalCount: 0, basetypes: [] };
+                            }
+                            
+                            skillsAggregated[name].totalCount += count.count;
+                            skillsAggregated[name].basetypes.push(`${result.basetype}: ${percentage.toFixed(1)}%`);
+                        });
+                    }
+                }
+            }
+            
+            // Display itemmods results - calculate percentage based on total builds
+            const itemmodsArray = Object.entries(itemmodsAggregated)
+                .map(([name, data]) => ({ 
+                    name, 
+                    percentage: (data.totalCount / totalBuilds) * 100, 
+                    count: data.totalCount, 
+                    basetypes: data.basetypes 
+                }))
+                .sort((a, b) => b.percentage - a.percentage)
+                .slice(0, 50);
+            
+            itemmodsResults.innerHTML = itemmodsArray.length > 0 ? 
+                itemmodsArray.map(item => `
+                    <div class="aggregation-item" title="${item.basetypes.join(', ')}">
+                        <span class="aggregation-name">${item.name}</span>
+                        <span class="aggregation-count">${item.count}</span>
+                        <span class="aggregation-percentage">${item.percentage.toFixed(1)}%</span>
+                    </div>
+                `).join('') : 
+                '<div style="color: #ff6b6b;">No item modifiers data available</div>';
+            
+            // Display skills results - calculate percentage based on total builds
+            const skillsArray = Object.entries(skillsAggregated)
+                .map(([name, data]) => ({ 
+                    name, 
+                    percentage: (data.totalCount / totalBuilds) * 100, 
+                    count: data.totalCount, 
+                    basetypes: data.basetypes 
+                }))
+                .sort((a, b) => b.percentage - a.percentage)
+                .slice(0, 50);
+            
+            skillsResults.innerHTML = skillsArray.length > 0 ? 
+                skillsArray.map(item => `
+                    <div class="aggregation-item" title="${item.basetypes.join(', ')}">
+                        <span class="aggregation-name">${item.name}</span>
+                        <span class="aggregation-count">${item.count}</span>
+                        <span class="aggregation-percentage">${item.percentage.toFixed(1)}%</span>
+                    </div>
+                `).join('') : 
+                '<div style="color: #ff6b6b;">No skills data available</div>';
+            
+            // Update status
+            const errorText = errors.length > 0 ? ` (${errors.length} failed: ${errors.map(e => e.basetype).join(', ')})` : '';
+            status.innerHTML = `
+                ✅ Analysis complete: ${results.length} basetypes, ${totalBuilds.toLocaleString()} builds${errorText}<br>
+                <small>Basetype distribution: ${results.map(r => `${r.basetype}: ${r.total}`).join(', ')}</small>
+            `;
+            
+            addMessage(`🎯 ${groupName} analysis complete: ${itemmodsArray.length} modifiers, ${skillsArray.length} skills`, 'success');
+        }
+        
+        function closeAggregationPanel() {
+            document.getElementById('aggregationPanel').classList.remove('active');
+        }
+        
+        function getAttributeGroupsData() {
+            // Return the complete attribute groups data structure
+            return {
+                "Body Armour": {
+                    "Dex": ["Syndicate's Garb", "Astral Leather", "Supreme Leather", "Assassin's Garb", "Zodiac Leather", "Exquisite Leather", "Destiny Leather", "Sharkskin Tunic", "Cutthroat's Garb", "Coronal Leather", "Glorious Leather", "Frontier Leather", "Eelskin Tunic", "Thief's Garb", "Sun Leather", "Full Leather", "Wild Leather", "Buckskin Tunic", "Strapped Leather", "Shabby Jerkin"],
+                    "DexInt": ["Necrotic Armour", "Torturer Garb", "Sanguine Raiment", "Carnal Armour", "Sadist Garb", "Blood Raiment", "Varnished Coat", "Sentinel Jacket", "Crypt Armour", "Lacquered Garb", "Crimson Raiment", "Sleek Coat", "Quilted Jacket", "Bone Armour", "Waxed Garb", "Scarlet Raiment", "Oiled Coat", "Padded Jacket", "Oiled Vest", "Padded Vest"],
+                    "Int": ["Twilight Regalia", "Nightweave Robe", "Arcane Vestment", "Vaal Regalia", "Widowsilk Robe", "Occultist's Vestment", "Necromancer Silks", "Savant's Robe", "Destroyer Regalia", "Spidersilk Robe", "Conjurer's Vestment", "Silken Wrap", "Sage's Robe", "Cabalist Regalia", "Silk Robe", "Mage's Vestment", "Silken Garb", "Scholar's Robe", "Silken Vest", "Simple Robe"],
+                    "Str": ["Royal Plate", "Legion Plate", "Titan Plate", "Glorious Plate", "Gladiator Plate", "Astral Plate", "Crusader Plate", "Golden Plate", "Majestic Plate", "Colosseum Plate", "Sun Plate", "Battle Plate", "Bronze Plate", "Lordly Plate", "Arena Plate", "Full Plate", "War Plate", "Copper Plate", "Chestplate", "Plate Vest"],
+                    "StrDex": ["Conquest Lamellar", "Marshall's Brigandine", "Full Wyvernscale", "Triumphant Lamellar", "General's Brigandine", "Full Dragonscale", "Desert Brigandine", "Dragonscale Doublet", "Battle Lamellar", "Commander's Brigandine", "Full Wyrmscale", "Hussar Brigandine", "Wyrmscale Doublet", "Field Lamellar", "Soldier's Brigandine", "Full Scale Armour", "Infantry Brigandine", "Scale Doublet", "Light Brigandine", "Scale Vest"],
+                    "StrInt": ["Sacred Chainmail", "Paladin's Hauberk", "Grand Ringmail", "Saintly Chainmail", "Saint's Hauberk", "Elegant Ringmail", "Conquest Chainmail", "Loricated Ringmail", "Devout Chainmail", "Chain Hauberk", "Ornate Ringmail", "Crusader Chainmail", "Latticed Ringmail", "Holy Chainmail", "Full Chainmail", "Full Ringmail", "Chainmail Doublet", "Ringmail Coat", "Chainmail Tunic", "Chainmail Vest"]
+                },
+                "Boots": {
+                    "Dex": ["Velour Boots", "Stormrider Boots", "Harpyskin Boots", "Slink Boots", "Stealth Boots", "Shagreen Boots", "Windbreak Boots", "Sharkskin Boots", "Eelskin Boots", "Nubuck Boots", "Deerskin Boots", "Cloudwhisper Boots", "Goathide Boots", "Rawhide Boots"],
+                    "DexInt": ["Phantom Boots", "Infiltrator Boots", "Fugitive Boots", "Murder Boots", "Assassin's Boots", "Carnal Boots", "Ambush Boots", "Trapper Boots", "Shackled Boots", "Clasped Boots", "Strapped Boots", "Wrapped Boots"],
+                    "Int": ["Warlock Boots", "Dreamquest Slippers", "Sage Slippers", "Sorcerer Boots", "Arcanist Slippers", "Conjurer Boots", "Nightwind Slippers", "Samite Slippers", "Satin Slippers", "Scholar Boots", "Silk Slippers", "Duskwalk Slippers", "Velvet Slippers", "Wool Shoes"],
+                    "Str": ["Leviathan Greaves", "Brimstone Treads", "Precursor Greaves", "Titan Greaves", "Vaal Greaves", "Goliath Greaves", "Darksteel Treads", "Ancient Greaves", "Antique Greaves", "Reinforced Greaves", "Plated Greaves", "Basemetal Treads", "Steel Greaves", "Iron Greaves"],
+                    "StrDex": ["Wyvernscale Boots", "Chimerascale Boots", "Two-Toned Boots", "Dragonscale Boots", "Hydrascale Boots", "Wyrmscale Boots", "Serpentscale Boots", "Steelscale Boots", "Bronzescale Boots", "Ironscale Boots", "Leatherscale Boots"],
+                    "StrInt": ["Paladin Boots", "Martyr Boots", "Crusader Boots", "Legion Boots", "Soldier Boots", "Zealot Boots", "Riveted Boots", "Mesh Boots", "Ringmail Boots", "Chain Boots"]
+                },
+                "Gloves": {
+                    "Dex": ["Velour Gloves", "Harpyskin Gloves", "Trapsetter Gloves", "Slink Gloves", "Gripped Gloves", "Stealth Gloves", "Shagreen Gloves", "Sharkskin Gloves", "Apprentice Gloves", "Eelskin Gloves", "Nubuck Gloves", "Deerskin Gloves", "Tinker Gloves", "Goathide Gloves", "Rawhide Gloves"],
+                    "DexInt": ["Phantom Mitts", "Infiltrator Mitts", "Murder Mitts", "Assassin's Mitts", "Carnal Mitts", "Ambush Mitts", "Trapper Mitts", "Clasped Mitts", "Strapped Mitts", "Wrapped Mitts"],
+                    "Int": ["Warlock Gloves", "Sage Gloves", "Nexus Gloves", "Fingerless Silk Gloves", "Sorcerer Gloves", "Arcanist Gloves", "Conjurer Gloves", "Samite Gloves", "Satin Gloves", "Aetherwind Gloves", "Embroidered Gloves", "Silk Gloves", "Velvet Gloves", "Leyline Gloves", "Wool Gloves"],
+                    "Str": ["Leviathan Gauntlets", "Precursor Gauntlets", "Thwarting Gauntlets", "Spiked Gloves", "Titan Gauntlets", "Vaal Gauntlets", "Goliath Gauntlets", "Ancient Gauntlets", "Guarding Gauntlets", "Antique Gauntlets", "Steel Gauntlets", "Bronze Gauntlets", "Plated Gauntlets", "Preserving Gauntlets", "Iron Gauntlets"],
+                    "StrDex": ["Wyvernscale Gauntlets", "Chimerascale Gauntlets", "Dragonscale Gauntlets", "Hydrascale Gauntlets", "Wyrmscale Gauntlets", "Serpentscale Gauntlets", "Steelscale Gauntlets", "Bronzescale Gauntlets", "Ironscale Gauntlets", "Fishscale Gauntlets"],
+                    "StrInt": ["Paladin Gloves", "Martyr Gloves", "Apothecary's Gloves", "Crusader Gloves", "Legion Gloves", "Soldier Gloves", "Zealot Gloves", "Riveted Gloves", "Mesh Gloves", "Ringmail Gloves", "Chain Gloves"]
+                },
+                "Helmets": {
+                    "Dex": ["Majestic Pelt", "Grizzly Pelt", "Dire Pelt", "Lion Pelt", "Sinner Tricorne", "Silken Hood", "Ursine Pelt", "Noble Tricorne", "Hunter Hood", "Wolf Pelt", "Leather Hood", "Tricorne", "Leather Cap"],
+                    "DexInt": ["Torturer's Mask", "Ancient Mask", "Blizzard Crown", "Jester Mask", "Deicide Mask", "Vaal Mask", "Harlequin Mask", "Regicide Mask", "Winter Crown", "Callous Mask", "Raven Mask", "Golden Mask", "Festival Mask", "Iron Mask", "Gale Crown", "Plague Mask", "Scare Mask"],
+                    "Int": ["Lich's Circlet", "Sunfire Circlet", "Moonlit Circlet", "Hubris Circlet", "Mind Cage", "Solaris Circlet", "Necromancer Circlet", "Steel Circlet", "Lunaris Circlet", "Bone Circlet", "Tribal Circlet", "Torture Cage", "Iron Circlet", "Vine Circlet"],
+                    "Str": ["Giantslayer Helmet", "Conqueror's Helmet", "General's Helmet", "Eternal Burgonet", "Royal Burgonet", "Ezomyte Burgonet", "Samnite Helmet", "Siege Helmet", "Reaver Helmet", "Gladiator Helmet", "Close Helmet", "Barbute Helmet", "Cone Helmet", "Iron Hat"],
+                    "StrDex": ["Haunted Bascinet", "Conquest Helmet", "Penitent Mask", "Knight Helm", "Nightmare Bascinet", "Pig-Faced Bascinet", "Fluted Bascinet", "Lacquered Helmet", "Atonement Mask", "Fencer Helm", "Secutor Helm", "Gilded Sallet", "Visored Sallet", "Sorrow Mask", "Sallet", "Battered Helm"],
+                    "StrInt": ["Divine Crown", "Paladin Crown", "Archdemon Crown", "Faithful Helmet", "Bone Helmet", "Praetor Crown", "Prophet Crown", "Magistrate Crown", "Great Crown", "Demon Crown", "Zealot Helmet", "Aventail Helmet", "Crusader Helmet", "Great Helmet", "Imp Crown", "Soldier Helmet", "Rusted Coif"]
+                },
+                "Shield": {
+                    "Dex": ["Imperial Buckler", "Crusader Buckler", "Vaal Buckler", "Lacquered Buckler", "Ironwood Buckler", "Golden Buckler", "Battle Buckler", "Corrugated Buckler", "Enameled Buckler", "Oak Buckler", "Gilded Buckler", "War Buckler", "Hammered Buckler", "Painted Buckler", "Pine Buckler", "Goathide Buckler"],
+                    "DexInt": ["Supreme Spiked Shield", "Mirrored Spiked Shield", "Ezomyte Spiked Shield", "Alder Spiked Shield", "Sovereign Spiked Shield", "Polished Spiked Shield", "Compound Spiked Shield", "Redwood Spiked Shield", "Ornate Spiked Shield", "Burnished Spiked Shield", "Alloyed Spiked Shield", "Driftwood Spiked Shield", "Spiked Bundle"],
+                    "Int": ["Titanium Spirit Shield", "Harmonic Spirit Shield", "Vaal Spirit Shield", "Lacewood Spirit Shield", "Thorium Spirit Shield", "Chiming Spirit Shield", "Fossilised Spirit Shield", "Ivory Spirit Shield", "Bone Spirit Shield", "Ancient Spirit Shield", "Walnut Spirit Shield", "Brass Spirit Shield", "Jingling Spirit Shield", "Tarnished Spirit Shield", "Yew Spirit Shield", "Twig Spirit Shield"],
+                    "Str": ["Pinnacle Tower Shield", "Colossal Tower Shield", "Ezomyte Tower Shield", "Ebony Tower Shield", "Shagreen Tower Shield", "Crested Tower Shield", "Girded Tower Shield", "Bronze Tower Shield", "Mahogany Tower Shield", "Buckskin Tower Shield", "Painted Tower Shield", "Reinforced Tower Shield", "Copper Tower Shield", "Cedar Tower Shield", "Rawhide Tower Shield", "Corroded Tower Shield", "Splintered Tower Shield"],
+                    "StrDex": ["Elegant Round Shield", "Cardinal Round Shield", "Spiny Round Shield", "Teak Round Shield", "Baroque Round Shield", "Crimson Round Shield", "Spiked Round Shield", "Maple Round Shield", "Splendid Round Shield", "Scarlet Round Shield", "Studded Round Shield", "Fir Round Shield", "Rotted Round Shield"],
+                    "StrInt": ["Archon Kite Shield", "Mosaic Kite Shield", "Champion Kite Shield", "Branded Kite Shield", "Angelic Kite Shield", "Laminated Kite Shield", "Steel Kite Shield", "Etched Kite Shield", "Ceremonial Kite Shield", "Layered Kite Shield", "Reinforced Kite Shield", "Linden Kite Shield", "Plank Kite Shield"]
+                }
+            };
+        }
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            createRareItemGrid();
+        });
+    </script>
+</body>
+</html>

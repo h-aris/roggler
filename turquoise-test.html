@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Turquoise Test - Dictionary Resolution</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #1a1a1a; 
+            color: #e0e0e0; 
+            margin: 0;
+            display: flex;
+        }
+        .sidebar {
+            width: 250px;
+            background: #0a0a0a;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+            border-right: 2px solid #2a2a2a;
+        }
+        .sidebar h3 {
+            color: #4a9eff;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        .sidebar a {
+            display: block;
+            color: #e0e0e0;
+            text-decoration: none;
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .sidebar a:hover {
+            background: #2a2a2a;
+        }
+        .sidebar a.active {
+            background: #4a9eff;
+            color: white;
+        }
+        .sidebar .section {
+            margin-bottom: 20px;
+        }
+        .main-content {
+            flex: 1;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-family: monospace;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 5px;
+            background: #4a9eff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .dimensions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .dimension-card {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .dimension-card:hover {
+            border-color: #4a9eff;
+            background: #3a3a3a;
+        }
+        .dimension-card.selected {
+            border-color: #51cf66;
+            background: #2a4a2a;
+        }
+        .dimension-title {
+            font-weight: bold;
+            color: #4a9eff;
+            margin-bottom: 5px;
+        }
+        .dimension-info {
+            font-size: 12px;
+            color: #aaa;
+        }
+        .results-section {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #3a3a3a;
+        }
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        .result-name {
+            flex: 1;
+            font-family: monospace;
+        }
+        .result-count {
+            margin: 0 15px;
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .result-percentage {
+            color: #51cf66;
+            font-weight: bold;
+            min-width: 60px;
+            text-align: right;
+        }
+        .error {
+            background: #4a1a1a;
+            color: #ff6b6b;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #ff6b6b;
+            margin: 10px 0;
+        }
+        .success {
+            background: #1a4a1a;
+            color: #51cf66;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #51cf66;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #4a3a1a;
+            color: #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #ffc107;
+            margin: 10px 0;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h3>🔮 POE Ninja Project</h3>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Main Tools</h4>
+            <a href="poe-ninja-recreation.html">🏠 POE Ninja Recreation</a>
+            <a href="turquoise-test.html" class="active">🧪 Turquoise Test</a>
+            <a href="dictionary-collector.html">📚 Dictionary Collector</a>
+        </div>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Testing & Debug</h4>
+            <a href="dictionary-test.html">🔍 Dictionary Test</a>
+            <a href="original-test-recreation.html">📋 Original Test Recreation</a>
+            <a href="test-correct-api.html">✅ Test Correct API</a>
+            <a href="analyze-saved-data.html">📊 Analyze Saved Data</a>
+        </div>
+        
+        <div class="section">
+            <h4 style="color: #ffc107; margin: 10px 0 5px 0; font-size: 14px;">Legacy</h4>
+            <a href="test.html">🧪 Legacy Test</a>
+            <a href="debug.html">🐛 Debug</a>
+            <a href="index.html">📄 Index</a>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div class="container">
+        <h1>Turquoise Test - Dictionary Resolution</h1>
+        <p>Test API calls with complete dictionary resolution using pre-fetched dictionaries</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="apiUrl">API URL:</label>
+                <input type="text" id="apiUrl" value="https://poe.ninja/poe1/api/builds/1802-20251102-12759/search?items=Rare Amulet&itembasetypes-Amulet=Turquoise Amulet&overview=keepers&type=exp">
+            </div>
+            
+            <div class="control-group">
+                <label for="dictionaryFile">Dictionary File:</label>
+                <input type="text" id="dictionaryFile" value="complete-dictionaries-1762114962166.json">
+            </div>
+            
+            <div style="text-align: center;">
+                <button onclick="loadDictionary()">📚 Load Dictionary</button>
+                <button onclick="fetchAndAnalyze()" id="analyzeBtn" disabled>🔍 Fetch & Analyze</button>
+                <button onclick="clearResults()">🗑️ Clear</button>
+            </div>
+        </div>
+        
+        <div id="messages"></div>
+        
+        <div id="dimensionsSection" style="display: none;">
+            <h3>Available Dimensions (click to analyze):</h3>
+            <div id="dimensionsGrid" class="dimensions-grid"></div>
+        </div>
+        
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <h3 id="resultsTitle">Results</h3>
+            <div class="stats" id="resultsStats"></div>
+            <div id="resultsList"></div>
+        </div>
+        </div>
+    </div>
+    
+    <script src="protobuf-decoder.js"></script>
+    <script>
+        let loadedDictionaries = null;
+        let fetchedData = null;
+        let selectedDimension = null;
+        let apiDictionaries = {};
+        
+        function showMessage(message, type = 'info') {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerHTML = message;
+            messages.appendChild(div);
+            
+            // Auto-remove after 5 seconds for non-error messages
+            if (type !== 'error') {
+                setTimeout(() => {
+                    if (div.parentNode) {
+                        div.parentNode.removeChild(div);
+                    }
+                }, 5000);
+            }
+        }
+        
+        async function loadDictionary() {
+            const filename = document.getElementById('dictionaryFile').value.trim();
+            
+            if (!filename) {
+                showMessage('Please specify a dictionary file', 'error');
+                return;
+            }
+            
+            try {
+                showMessage('Loading dictionary file...', 'info');
+                
+                const response = await fetch(filename);
+                if (!response.ok) {
+                    throw new Error(`Failed to load dictionary file: ${response.status} - ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.dictionaries || !Array.isArray(data.dictionaries)) {
+                    throw new Error('Invalid dictionary file format: missing dictionaries array');
+                }
+                
+                // Convert to lookup format
+                loadedDictionaries = {};
+                data.dictionaries.forEach(dict => {
+                    loadedDictionaries[dict.id] = dict;
+                });
+                
+                showMessage(`✅ Dictionary loaded successfully! Found ${data.dictionaries.length} dictionaries: ${Object.keys(loadedDictionaries).join(', ')}`, 'success');
+                
+                // Enable analyze button
+                document.getElementById('analyzeBtn').disabled = false;
+                
+            } catch (error) {
+                showMessage(`❌ Error loading dictionary: ${error.message}`, 'error');
+                loadedDictionaries = null;
+                document.getElementById('analyzeBtn').disabled = true;
+            }
+        }
+        
+        async function fetchAndAnalyze() {
+            if (!loadedDictionaries) {
+                showMessage('Please load dictionary first', 'error');
+                return;
+            }
+            
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                showMessage('Please specify API URL', 'error');
+                return;
+            }
+            
+            try {
+                showMessage('Fetching data from API...', 'info');
+                
+                // Convert to proxy URL
+                const proxyUrl = apiUrl.replace('https://poe.ninja', '/api');
+                
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status} - ${response.statusText}`);
+                }
+                
+                const data = await response.arrayBuffer();
+                const decoded = ProtobufDecoder.NinjaSearchResult.fromBinary(data);
+                
+                fetchedData = decoded;
+                
+                showMessage(`✅ Data fetched successfully! Found ${decoded.result.dimensions?.length || 0} dimensions`, 'success');
+                
+                // Check for dictionary references in this API call
+                if (decoded.result.dictionaries && decoded.result.dictionaries.length > 0) {
+                    showMessage(`🔍 Found ${decoded.result.dictionaries.length} dictionary references in API response. Fetching...`, 'info');
+                    await fetchApiDictionaries(decoded.result.dictionaries);
+                } else {
+                    showMessage(`⚠️ No dictionary references found in API response. Using pre-loaded dictionaries.`, 'warning');
+                }
+                
+                displayDimensions(decoded.result.dimensions);
+                
+            } catch (error) {
+                showMessage(`❌ Error fetching data: ${error.message}`, 'error');
+                fetchedData = null;
+            }
+        }
+        
+        async function fetchApiDictionaries(dictionaryRefs) {
+            apiDictionaries = {}; // Reset
+            let successCount = 0;
+            
+            showMessage(`Fetching ${dictionaryRefs.length} dictionaries from API...`, 'info');
+            
+            for (let i = 0; i < dictionaryRefs.length; i++) {
+                const dictRef = dictionaryRefs[i];
+                
+                try {
+                    console.log(`Fetching API dictionary ${i + 1}/${dictionaryRefs.length}: ${dictRef.id} (${dictRef.hash})`);
+                    
+                    const response = await fetch(`/api/poe1/api/builds/dictionary/${dictRef.hash}`);
+                    
+                    if (response.ok) {
+                        const dictData = await response.arrayBuffer();
+                        const dictionary = ProtobufDecoder.SearchResultDictionary.fromBinary(dictData);
+                        
+                        apiDictionaries[dictRef.id] = {
+                            id: dictRef.id,
+                            hash: dictRef.hash,
+                            values: dictionary.values || [],
+                            properties: dictionary.properties || [],
+                            source: 'api'
+                        };
+                        
+                        successCount++;
+                        console.log(`✅ API Dictionary ${dictRef.id}: ${dictionary.values?.length || 0} values`);
+                        
+                    } else {
+                        console.error(`❌ Failed to fetch API dictionary ${dictRef.id}: ${response.status}`);
+                    }
+                    
+                } catch (error) {
+                    console.error(`❌ Error fetching API dictionary ${dictRef.id}:`, error);
+                }
+            }
+            
+            if (successCount > 0) {
+                showMessage(`✅ Fetched ${successCount}/${dictionaryRefs.length} API dictionaries: ${Object.keys(apiDictionaries).join(', ')}`, 'success');
+                
+                // Merge API dictionaries with loaded ones, prioritizing API dictionaries
+                if (loadedDictionaries) {
+                    const merged = { ...loadedDictionaries, ...apiDictionaries };
+                    loadedDictionaries = merged;
+                    showMessage(`🔄 Merged API dictionaries with pre-loaded ones. API dictionaries take priority.`, 'info');
+                } else {
+                    loadedDictionaries = apiDictionaries;
+                    showMessage(`📚 Using API dictionaries only (no pre-loaded dictionaries available).`, 'info');
+                }
+            } else {
+                showMessage(`❌ Failed to fetch any API dictionaries`, 'error');
+            }
+        }
+        
+        function displayDimensions(dimensions) {
+            if (!dimensions || dimensions.length === 0) {
+                showMessage('No dimensions found in API response', 'warning');
+                return;
+            }
+            
+            const dimensionsSection = document.getElementById('dimensionsSection');
+            const dimensionsGrid = document.getElementById('dimensionsGrid');
+            
+            dimensionsGrid.innerHTML = '';
+            
+            dimensions.forEach((dimension, index) => {
+                const card = document.createElement('div');
+                card.className = 'dimension-card';
+                card.onclick = () => analyzeDimension(dimension, index);
+                
+                const dictionary = loadedDictionaries[dimension.dictionaryId];
+                const hasDictionary = !!dictionary;
+                
+                card.innerHTML = `
+                    <div class="dimension-title">${dimension.id}</div>
+                    <div class="dimension-info">
+                        Dictionary: ${dimension.dictionaryId}<br>
+                        Count: ${dimension.counts?.length || 0}<br>
+                        Dict Available: ${hasDictionary ? '✅' : '❌'}
+                    </div>
+                `;
+                
+                dimensionsGrid.appendChild(card);
+            });
+            
+            dimensionsSection.style.display = 'block';
+        }
+        
+        function analyzeDimension(dimension, index) {
+            if (!dimension.counts || dimension.counts.length === 0) {
+                showMessage('This dimension has no count data', 'warning');
+                return;
+            }
+            
+            console.log(`Analyzing dimension "${dimension.id}" which references dictionary "${dimension.dictionaryId}"`);
+            console.log('Available dictionaries:', Object.keys(loadedDictionaries));
+            
+            const dictionary = loadedDictionaries[dimension.dictionaryId];
+            if (!dictionary) {
+                showMessage(`❌ Dictionary "${dimension.dictionaryId}" not found in loaded dictionaries. Available: ${Object.keys(loadedDictionaries).join(', ')}`, 'error');
+                return;
+            }
+            
+            console.log(`Using dictionary "${dimension.dictionaryId}" from source: ${dictionary.source || 'pre-loaded'}`);
+            console.log(`Dictionary has ${dictionary.values?.length || 0} values`);
+            
+            if (!dictionary.values || !Array.isArray(dictionary.values)) {
+                showMessage(`❌ Dictionary "${dimension.dictionaryId}" has no values array`, 'error');
+                return;
+            }
+            
+            // Highlight selected dimension
+            document.querySelectorAll('.dimension-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelectorAll('.dimension-card')[index].classList.add('selected');
+            
+            selectedDimension = dimension;
+            
+            // Calculate TRUE total using secondascendancy dimension
+            const secondAscendancyDimension = fetchedData.result.dimensions.find(d => d.id === 'secondascendancy');
+            const trueTotal = secondAscendancyDimension ? 
+                secondAscendancyDimension.counts.reduce((sum, count) => sum + count.count, 0) : 
+                fetchedData.result.total;
+            
+            console.log('Using true total from secondascendancy:', trueTotal, 'vs API total:', fetchedData.result.total);
+            
+            // Process and resolve names
+            const resolvedData = dimension.counts.map(count => {
+                let name = dictionary.values[count.key];
+                
+                if (!name) {
+                    name = `Unknown_Key_${count.key}`;
+                }
+                
+                return {
+                    key: count.key,
+                    name: name,
+                    count: count.count,
+                    percentage: ((count.count / trueTotal) * 100).toFixed(1),
+                    resolved: !!dictionary.values[count.key]
+                };
+            }).sort((a, b) => b.count - a.count);
+            
+            // Show top 50
+            const top50 = resolvedData.slice(0, 50);
+            const totalResolved = resolvedData.filter(item => item.resolved).length;
+            const totalUnresolved = resolvedData.filter(item => !item.resolved).length;
+            
+            displayResults(dimension.id, top50, {
+                total: resolvedData.length,
+                resolved: totalResolved,
+                unresolved: totalUnresolved,
+                dictionarySize: dictionary.values.length
+            });
+            
+            showMessage(`✅ Analyzed ${dimension.id}: ${totalResolved}/${resolvedData.length} names resolved`, 'success');
+        }
+        
+        function displayResults(dimensionId, data, stats) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsTitle = document.getElementById('resultsTitle');
+            const resultsStats = document.getElementById('resultsStats');
+            const resultsList = document.getElementById('resultsList');
+            
+            resultsTitle.textContent = `${dimensionId} - Top 50 Results`;
+            
+            // Display stats
+            resultsStats.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-number">${stats.total}</div>
+                    <div class="stat-label">Total Items</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.resolved}</div>
+                    <div class="stat-label">Resolved</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.unresolved}</div>
+                    <div class="stat-label">Unresolved</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">${stats.dictionarySize}</div>
+                    <div class="stat-label">Dict Size</div>
+                </div>
+            `;
+            
+            // Display results
+            resultsList.innerHTML = data.map(item => `
+                <div class="result-item">
+                    <span class="result-name" style="color: ${item.resolved ? '#e0e0e0' : '#ff6b6b'}">${item.name}</span>
+                    <span class="result-count">${item.count}</span>
+                    <span class="result-percentage">${item.percentage}%</span>
+                </div>
+            `).join('');
+            
+            resultsSection.style.display = 'block';
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function clearResults() {
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('dimensionsSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            fetchedData = null;
+            selectedDimension = null;
+        }
+        
+        // Auto-load dictionary on page load
+        window.addEventListener('load', () => {
+            loadDictionary();
+        });
+    </script>
+</body>
+</html>
