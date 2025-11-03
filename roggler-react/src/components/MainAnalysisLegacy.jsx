@@ -4,7 +4,7 @@ import AnalysisOverlay from './AnalysisOverlay'
 import './MainAnalysisLegacy.css'
 
 const MainAnalysisLegacy = ({ onAggregationOpen }) => {
-  const [snapshotId, setSnapshotId] = useState('0955-20251103-36793')
+  const [snapshotId, setSnapshotId] = useState('1618-20251103-59847')
   const [showCustomSnapshot, setShowCustomSnapshot] = useState(false)
   const [selectedRareItem, setSelectedRareItem] = useState('')
   const [messages, setMessages] = useState([])
@@ -14,7 +14,7 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
   const [dimensionResults, setDimensionResults] = useState(null)
   const [showOverlay, setShowOverlay] = useState(false)
   
-  const { loading, error, currentData, dictionaries, fetchData } = usePoeApi()
+  const { loading, error, currentData, dictionaries, fetchData, fetchTopLevelData } = usePoeApi()
   
   const rareItems = [
     "Rare Amulet", "Rare Belt", "Rare Body Armour", "Rare Boots", "Rare Bow", 
@@ -33,25 +33,25 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
     }])
   }
 
-  const selectRareItem = async (rareItem) => {
-    setSelectedRareItem(rareItem)
+  const startTopLevelAnalysis = async () => {
+    setSelectedRareItem('')
     setShowAnalysis(false)
     setShowResults(false)
     setSelectedDimension(null)
     setDimensionResults(null)
     
-    addMessage(`Selected: ${rareItem}. Starting analysis...`, 'info')
+    addMessage(`Starting top-level analysis...`, 'info')
     
     try {
       localStorage.setItem('currentSnapshotId', snapshotId)
-      await fetchData(snapshotId, rareItem)
+      await fetchTopLevelData(snapshotId)
       
       if (Object.keys(dictionaries).length > 0) {
-        addMessage(`✅ Data fetched successfully! Found ${currentData?.result?.dimensions?.length || 0} dimensions`, 'success')
+        addMessage(`✅ Top-level data fetched successfully! Found ${currentData?.result?.dimensions?.length || 0} dimensions`, 'success')
         setShowOverlay(true)
       } else {
         addMessage(`🚫 Analysis cannot proceed without dictionaries from the API.`, 'error')
-        addMessage(`🔄 Try selecting ${rareItem} again in a few minutes.`, 'info')
+        addMessage(`🔄 Try starting analysis again in a few minutes.`, 'info')
       }
     } catch (err) {
       addMessage(`❌ Error: ${err.message}`, 'error')
@@ -271,27 +271,23 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
               }
             }}
           >
-            <option value="0955-20251103-36793">Latest (Nov 3, 2025)</option>
-            <option value="2006-20251102-24503">Previous (Nov 2, 2025)</option>
+            <option value="1618-20251103-59847">1618-20251103-59847 (Latest - Nov 3, 2025)</option>
+            <option value="0955-20251103-36793">0955-20251103-36793 (Nov 3, 2025)</option>
+            <option value="2006-20251102-24503">2006-20251102-24503 (Nov 2, 2025)</option>
             <option value="custom">Custom...</option>
           </select>
         </div>
       </div>
 
-      {/* Rare Items Grid */}
-      <div className="rare-items-section">
-        <h3>Select Rare Item Type</h3>
-        <div className="rare-items-grid">
-          {rareItems.map(rareItem => (
-            <div
-              key={rareItem}
-              className={`rare-item-button ${selectedRareItem === rareItem ? 'selected' : ''} ${loading ? 'disabled' : ''}`}
-              onClick={() => !loading && selectRareItem(rareItem)}
-            >
-              {rareItem}
-            </div>
-          ))}
-        </div>
+      {/* Start Analysis Button */}
+      <div className="start-analysis-section">
+        <button
+          className={`start-analysis-button ${loading ? 'disabled' : ''}`}
+          onClick={() => !loading && startTopLevelAnalysis()}
+          disabled={loading}
+        >
+          {loading ? 'Loading...' : 'Start Analysis'}
+        </button>
       </div>
 
       {/* Messages */}
@@ -414,7 +410,8 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g., 0955-20251103-36793"
+                placeholder="e.g., 1618-20251103-59847"
+                value={snapshotId === 'custom' ? '' : snapshotId}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -424,6 +421,9 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
                   if (e.key === 'Escape') {
                     setShowCustomSnapshot(false)
                   }
+                }}
+                onChange={(e) => {
+                  // Allow typing in the input
                 }}
               />
               <div className="modal-buttons">

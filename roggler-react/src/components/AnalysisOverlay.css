@@ -42,6 +42,44 @@
   background: #0a0a0a;
 }
 
+/* Loading Banner */
+.loading-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #3a3a3a;
+  font-size: 14px;
+  color: #4a9eff;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #3a3a3a;
+  border-left: 2px solid #4a9eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-info {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 .header-left {
   display: flex;
   flex-direction: column;

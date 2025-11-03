@@ -25,6 +25,72 @@ const usePoeApi = () => {
     }
   }
 
+  // Fetch top-level data from POE.ninja API
+  const fetchTopLevelData = async (snapshotId) => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const cacheKey = `toplevel_${snapshotId}`
+      
+      // Check cache first
+      if (cache[cacheKey]) {
+        console.log('Using cached top-level data for:', cacheKey)
+        setCurrentData(cache[cacheKey].data)
+        setDictionaries(cache[cacheKey].dictionaries)
+        return cache[cacheKey].data
+      }
+      
+      await waitForProtobuf()
+      const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?overview=keepers&type=exp`
+      const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
+      
+      const response = await fetch(proxyUrl)
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} - ${response.statusText}`)
+      }
+      
+      const data = await response.arrayBuffer()
+      const decoded = window.ProtobufDecoder.NinjaSearchResult.fromBinary(data)
+      
+      setCurrentData(decoded)
+      
+      // Load dictionaries if available
+      let loadedDictionaries = {}
+      if (decoded.result.dictionaries?.length > 0) {
+        loadedDictionaries = await loadDictionaries(decoded.result.dictionaries)
+      }
+      
+      // Cache the result
+      setCache(prev => ({
+        ...prev,
+        [cacheKey]: {
+          data: decoded,
+          dictionaries: loadedDictionaries,
+          timestamp: Date.now()
+        }
+      }))
+      
+      // Implement cache size limit (keep last 100 entries)
+      const cacheEntries = Object.entries(cache)
+      if (cacheEntries.length > 100) {
+        const sortedEntries = cacheEntries.sort((a, b) => b[1].timestamp - a[1].timestamp)
+        const newCache = {}
+        sortedEntries.slice(0, 100).forEach(([key, value]) => {
+          newCache[key] = value
+        })
+        setCache(newCache)
+      }
+      
+      return decoded
+    } catch (err) {
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Fetch data from POE.ninja API with caching
   const fetchData = async (snapshotId, rareItem) => {
     setLoading(true)
@@ -115,19 +181,21 @@ const usePoeApi = () => {
     return newDictionaries
   }
 
-  // Fetch data with skill filter only
+  // Fetch data with optional skill filter
   const fetchSkillFilteredData = async (snapshotId, rareItem, skillName) => {
     try {
       await waitForProtobuf()
       
       let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?overview=keepers&type=exp`
       
-      // Add skill filter
-      apiUrl += `&skills=${encodeURIComponent(skillName)}`
-      
       // Add rare item if provided
       if (rareItem) {
         apiUrl += `&items=${encodeURIComponent(rareItem)}`
+      }
+      
+      // Add skill filter if provided
+      if (skillName) {
+        apiUrl += `&skills=${encodeURIComponent(skillName)}`
       }
       
       const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
@@ -286,6 +354,7 @@ const usePoeApi = () => {
     currentData,
     dictionaries,
     fetchData,
+    fetchTopLevelData,
     loadDictionaries,
     aggregateBasetypes,
     processDimension,
