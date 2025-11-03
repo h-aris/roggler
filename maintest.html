@@ -452,7 +452,7 @@
             try {
                 const snapshotId = document.getElementById('snapshotId').value.trim();
                 const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=keepers&type=exp`;
-                const proxyUrl = apiUrl.replace('https://poe.ninja', '/api');
+                const proxyUrl = apiUrl.replace('https://poe.ninja', 'https://roggler-production.up.railway.app/api');
                 
                 addMessage(`Fetching data for ${rareItem}...`, 'info');
                 

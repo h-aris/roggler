@@ -346,7 +346,7 @@
                 showMessage('Fetching data from API...', 'info');
                 
                 // Convert to proxy URL
-                const proxyUrl = apiUrl.replace('https://poe.ninja', '/api');
+                const proxyUrl = apiUrl.replace('https://poe.ninja', 'https://roggler-production.up.railway.app/api');
                 
                 const response = await fetch(proxyUrl);
                 if (!response.ok) {
