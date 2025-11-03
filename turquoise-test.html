@@ -388,7 +388,7 @@
                 try {
                     console.log(`Fetching API dictionary ${i + 1}/${dictionaryRefs.length}: ${dictRef.id} (${dictRef.hash})`);
                     
-                    const response = await fetch(`/api/poe1/api/builds/dictionary/${dictRef.hash}`);
+                    const response = await fetch(`https://roggler-production.up.railway.app/api/poe1/api/builds/dictionary/${dictRef.hash}`);
                     
                     if (response.ok) {
                         const dictData = await response.arrayBuffer();
