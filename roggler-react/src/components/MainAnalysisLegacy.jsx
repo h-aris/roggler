@@ -39,15 +39,16 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
     setShowResults(false)
     setSelectedDimension(null)
     setDimensionResults(null)
-    
+
     addMessage(`Starting top-level analysis...`, 'info')
-    
+
     try {
       localStorage.setItem('currentSnapshotId', snapshotId)
-      await fetchTopLevelData(snapshotId)
-      
-      if (Object.keys(dictionaries).length > 0) {
-        addMessage(`✅ Top-level data fetched successfully! Found ${currentData?.result?.dimensions?.length || 0} dimensions`, 'success')
+      const data = await fetchTopLevelData(snapshotId)
+
+      // Check if we got data with dictionaries
+      if (data?.result?.dictionaries && data.result.dictionaries.length > 0) {
+        addMessage(`✅ Top-level data fetched successfully! Found ${data.result.dimensions?.length || 0} dimensions`, 'success')
         setShowOverlay(true)
       } else {
         addMessage(`🚫 Analysis cannot proceed without dictionaries from the API.`, 'error')

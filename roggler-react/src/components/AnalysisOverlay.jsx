@@ -13,20 +13,270 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
   
   // Unified data state
   const [processedData, setProcessedData] = useState(null)
-  
+
   // Unified loading state
   const [isLoading, setIsLoading] = useState(false)
   const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 })
   const [currentOperation, setCurrentOperation] = useState('')
   const [cacheStatus, setCacheStatus] = useState('')
-  
+  const [insufficientDataError, setInsufficientDataError] = useState(null)
+
   // Unified error state
-  const [, setErrors] = useState([])
-  
+  const [errors, setErrors] = useState([])
+
   // Filter-level cache
   const [filterCache, setFilterCache] = useState({})
+
+  // Group expansion and selection state
+  const [expandedGroups, setExpandedGroups] = useState(new Set())
+  const [pendingSelections, setPendingSelections] = useState(null) // { dimension: 'basetypes', groupKey: '...', items: [...] }
+  const [parentCallData, setParentCallData] = useState(null) // Stores data for percentage calculations
+  
+  // Debug panel state
+  const [debugPanelOpen, setDebugPanelOpen] = useState(() => {
+    return localStorage.getItem('debugPanelOpen') === 'true'
+  })
+  const [debugLogs, setDebugLogs] = useState([])
+  const [debugActiveTab, setDebugActiveTab] = useState('dimensions')
   
   const { fetchSkillFilteredData, aggregateBasetypes } = usePoeApi()
+
+  // Debug logging function
+  const addDebugLog = (message, type = 'info', data = null) => {
+    const logEntry = {
+      id: Date.now() + Math.random(),
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+      type,
+      data
+    }
+    setDebugLogs(prev => [...prev, logEntry])
+    console.log(`[DEBUG ${type.toUpperCase()}]`, message, data)
+  }
+
+  // Toggle debug panel
+  const toggleDebugPanel = () => {
+    const newState = !debugPanelOpen
+    setDebugPanelOpen(newState)
+    localStorage.setItem('debugPanelOpen', newState.toString())
+    addDebugLog(`Debug panel ${newState ? 'opened' : 'closed'}`)
+  }
+
+  // Get parent call state (current filters without basetypes)
+  const getParentCallState = (filters) => {
+    return {
+      ...filters,
+      basetypes: []
+    }
+  }
+
+  // Load custom selections from localStorage
+  const loadCustomSelections = () => {
+    try {
+      const saved = localStorage.getItem('basetypeSelections')
+      return saved ? JSON.parse(saved) : {}
+    } catch (e) {
+      console.error('Failed to load custom selections:', e)
+      return {}
+    }
+  }
+
+  // Save custom selections to localStorage
+  const saveCustomSelections = (category, groupKey, items) => {
+    try {
+      const current = loadCustomSelections()
+      if (!current[category]) current[category] = {}
+
+      if (items.length === 0) {
+        // Remove the entry if empty
+        delete current[category][groupKey]
+        if (Object.keys(current[category]).length === 0) {
+          delete current[category]
+        }
+      } else {
+        current[category][groupKey] = items
+      }
+
+      localStorage.setItem('basetypeSelections', JSON.stringify(current))
+      addDebugLog(`Saved custom selections for ${groupKey}`, 'info', { category, groupKey, items })
+    } catch (e) {
+      console.error('Failed to save custom selections:', e)
+    }
+  }
+
+  // Get default selections (top 6 from priority list)
+  const getDefaultSelections = (category, attribute) => {
+    const attributeGroups = getAttributeGroupsForCategory(category)
+    const allBasetypes = attributeGroups[attribute] || []
+    return allBasetypes.slice(0, 6)
+  }
+
+  // Get selections for a group (custom or default)
+  const getSelectionsForGroup = (category, groupKey, attribute) => {
+    const customSelections = loadCustomSelections()
+    if (customSelections[category]?.[groupKey]) {
+      return customSelections[category][groupKey]
+    }
+    return getDefaultSelections(category, attribute)
+  }
+
+  // Check if the result has insufficient data
+  const hasInsufficientData = (result) => {
+    if (!result) return true
+
+    // Simple logic: If we're filtering by item only (no basetype, no skill)
+    // and the API returned empty itembasetypes, itemmods, and skills,
+    // then this is insufficient data
+    const isItemOnlyFilter = activeFilters.items.length > 0 &&
+                             activeFilters.basetypes.length === 0 &&
+                             activeFilters.skills.length === 0
+
+    if (isItemOnlyFilter) {
+      // Check if the critical dimensions are empty
+      const hasItembasetypes = result.itembasetypes?.some(dim => dim.data && dim.data.length > 0)
+      const hasItemmods = result.itemmods?.some(dim => dim.data && dim.data.length > 0)
+      const hasSkills = result.skills?.some(dim => dim.data && dim.data.length > 0)
+
+      const debugInfo = {
+        filterType: 'item-only',
+        item: activeFilters.items[0],
+        itembasetypes: { hasData: hasItembasetypes, count: result.itembasetypes?.reduce((sum, dim) => sum + (dim.data?.length || 0), 0) || 0 },
+        itemmods: { hasData: hasItemmods, count: result.itemmods?.reduce((sum, dim) => sum + (dim.data?.length || 0), 0) || 0 },
+        skills: { hasData: hasSkills, count: result.skills?.reduce((sum, dim) => sum + (dim.data?.length || 0), 0) || 0 }
+      }
+
+      const isInsufficient = !hasItembasetypes && !hasItemmods && !hasSkills
+
+      addDebugLog(
+        `Sufficiency check (item-only filter): ${isInsufficient ? 'INSUFFICIENT' : 'SUFFICIENT'}`,
+        isInsufficient ? 'warning' : 'success',
+        debugInfo
+      )
+
+      return isInsufficient
+    }
+
+    // For other filter types (basetype or skill filters), data is sufficient
+    return false
+  }
+
+  // Retry function
+  const retryInsufficientData = () => {
+    addDebugLog('Retrying insufficient data call', 'info')
+    setInsufficientDataError(null)
+
+    // Clear cache for current filter combination
+    const cacheKey = generateCacheKey(activeFilters)
+    setFilterCache(prev => {
+      const newCache = { ...prev }
+      delete newCache[cacheKey]
+      return newCache
+    })
+
+    // Re-execute the filter pipeline
+    if (hasActiveFilters()) {
+      executeFilterPipeline()
+    }
+  }
+
+  // Ensure parent call data exists (for percentage calculations)
+  const ensureParentCallData = async () => {
+    const parentState = getParentCallState(activeFilters)
+    const parentCacheKey = generateCacheKey(parentState)
+
+    // Check if we already have parent data
+    if (filterCache[parentCacheKey]) {
+      addDebugLog('Parent call data found in cache', 'success', { parentCacheKey })
+      setParentCallData(filterCache[parentCacheKey])
+      return filterCache[parentCacheKey]
+    }
+
+    // Need to fetch parent data
+    addDebugLog('Fetching parent call data', 'info', { parentState })
+    setIsLoading(true)
+    setCurrentOperation('Loading basetype data...')
+
+    try {
+      let result
+      if (parentState.skills.length > 0) {
+        // Has skills, need to make API call
+        result = await executeRegularFiltering(parentState)
+      } else {
+        // Item-only or no filters
+        result = await executeRegularFiltering(parentState)
+      }
+
+      if (result) {
+        // Cache it
+        setFilterCache(prev => ({
+          ...prev,
+          [parentCacheKey]: result
+        }))
+        setParentCallData(result)
+        addDebugLog('Parent call data fetched and cached', 'success', { parentCacheKey })
+        return result
+      }
+    } catch (err) {
+      addDebugLog('Failed to fetch parent call data', 'error', err)
+    } finally {
+      setIsLoading(false)
+      setCurrentOperation('')
+    }
+
+    return null
+  }
+
+  // Extract raw basetype data with counts and calculate group percentages
+  const extractBasetypeData = (data) => {
+    if (!data?.itembasetypes || data.itembasetypes.length === 0) return null
+
+    // Get raw itembasetypes dimension
+    const itembasetypesDim = data.itembasetypes[0]
+    if (!itembasetypesDim) return null
+
+    // Use rawData if available, otherwise fall back to grouped data
+    const rawBasetypes = itembasetypesDim.rawData || itembasetypesDim.data
+    if (!rawBasetypes || rawBasetypes.length === 0) return null
+
+    const category = itembasetypesDim.id.replace('itembasetypes-', '')
+
+    // Calculate group totals
+    const attributeGroups = getAttributeGroupsForCategory(category)
+    const groupTotals = {}
+    const groupItems = {}
+
+    Object.keys(attributeGroups).forEach(attribute => {
+      const basetypes = attributeGroups[attribute]
+      let total = 0
+      const items = []
+
+      basetypes.forEach(basetypeName => {
+        const found = rawBasetypes.find(b => b.name === basetypeName)
+        if (found) {
+          total += found.count
+          items.push({
+            ...found,
+            percentageOfGroup: 0 // Will calculate after we have total
+          })
+        }
+      })
+
+      // Calculate percentage of group
+      items.forEach(item => {
+        item.percentageOfGroup = total > 0 ? parseFloat(((item.count / total) * 100).toFixed(1)) : 0
+      })
+
+      groupTotals[attribute] = total
+      groupItems[attribute] = items.sort((a, b) => b.count - a.count)
+    })
+
+    return {
+      category,
+      groupTotals,
+      groupItems,
+      rawBasetypes
+    }
+  }
 
   useEffect(() => {
     if (isOpen && initialData && dictionaries) {
@@ -37,6 +287,10 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
   useEffect(() => {
     if (activeFilters.snapshotId && hasActiveFilters()) {
       executeFilterPipeline()
+      // Ensure parent call data is loaded for percentage calculations
+      if (activeFilters.items.length > 0) {
+        ensureParentCallData()
+      }
     } else if (activeFilters.snapshotId) {
       setProcessedData(generateInitialData())
     }
@@ -54,6 +308,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     setActiveFilters(prev => ({ ...prev, snapshotId }))
     setProcessedData(generateInitialData())
     setErrors([])
+    setInsufficientDataError(null)
   }
 
   const hasActiveFilters = () => {
@@ -115,10 +370,12 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
   const executeFilterPipeline = async () => {
     const cacheKey = generateCacheKey(activeFilters)
+    addDebugLog(`Starting filter pipeline for: ${cacheKey}`, 'info', activeFilters)
     
     // Check cache first
     if (filterCache[cacheKey]) {
       console.log('🎯 Cache hit for:', cacheKey)
+      addDebugLog(`Cache hit for: ${cacheKey}`, 'success')
       setCacheStatus('🎯 Cache hit')
       setProcessedData(filterCache[cacheKey])
       setTimeout(() => setCacheStatus(''), 2000)
@@ -126,9 +383,11 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     }
     
     console.log('📡 Cache miss, making API calls for:', cacheKey)
+    addDebugLog(`Cache miss, making API calls for: ${cacheKey}`, 'info')
     setCacheStatus('📡 Cache miss')
     setIsLoading(true)
     setErrors([])
+    setInsufficientDataError(null) // Clear previous insufficient data error
     setLoadingProgress({ current: 0, total: 0 })
     setCurrentOperation('Generating API calls...')
 
@@ -142,17 +401,30 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
         result = await executeRegularFiltering()
       }
       
-      // Cache the result
-      if (result) {
+      // Check if result has insufficient data
+      if (result && hasInsufficientData(result)) {
+        addDebugLog(`Insufficient data detected for: ${cacheKey} - NOT caching`, 'warning', result)
+        setInsufficientDataError({
+          message: 'No meaningful data returned from API',
+          cacheKey,
+          filters: activeFilters
+        })
+        setProcessedData(result) // Still show what we got, but don't cache it
+      } else if (result) {
+        addDebugLog(`Caching result for: ${cacheKey}`, 'success', { cacheKey, resultKeys: Object.keys(result) })
+        setInsufficientDataError(null) // Clear any previous error
         setFilterCache(prev => ({
           ...prev,
           [cacheKey]: result
         }))
         setProcessedData(result)
+      } else {
+        addDebugLog(`No result to cache for: ${cacheKey}`, 'warning')
       }
       
     } catch (err) {
       console.error('Filter pipeline error:', err)
+      addDebugLog(`Filter pipeline error: ${err.message}`, 'error', err)
       setErrors([{ error: err.message }])
     } finally {
       setIsLoading(false)
@@ -165,80 +437,149 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     // Extract category from activeFilters.basetypes (we need to determine category)
     const item = activeFilters.items[0] // Should be set when basetypes are selected
     const category = extractCategoryFromItem(item)
-    
+
     if (!category) {
       throw new Error('Cannot determine category for basetype aggregation')
     }
 
-    // Limit to top 6 basetypes (aggregateBasetypes will handle this)
-    const top6Basetypes = activeFilters.basetypes.slice(0, 6)
-    
-    setCurrentOperation(`Aggregating ${top6Basetypes.length} basetypes...`)
-    setLoadingProgress({ current: 0, total: top6Basetypes.length })
+    const selectedBasetypes = activeFilters.basetypes
+
+    // Check which basetypes are already cached individually
+    const cachedResults = []
+    const uncachedBasetypes = []
+
+    for (const basetype of selectedBasetypes) {
+      const basetypeCacheKey = generateCacheKey({
+        ...activeFilters,
+        basetypes: [basetype]
+      })
+
+      if (filterCache[basetypeCacheKey]) {
+        addDebugLog(`Individual cache hit: ${basetype}`, 'success')
+        cachedResults.push({
+          basetype,
+          cached: true,
+          data: filterCache[basetypeCacheKey]
+        })
+      } else {
+        addDebugLog(`Individual cache miss: ${basetype}`, 'info')
+        uncachedBasetypes.push(basetype)
+      }
+    }
+
+    addDebugLog(`Basetype caching summary`, 'info', {
+      total: selectedBasetypes.length,
+      cached: cachedResults.length,
+      needToFetch: uncachedBasetypes.length
+    })
+
+    setCurrentOperation(`Fetching ${uncachedBasetypes.length}/${selectedBasetypes.length} basetypes...`)
+    setLoadingProgress({ current: 0, total: uncachedBasetypes.length })
 
     // Handle skills - for each skill, aggregate across all basetypes
     if (activeFilters.skills.length > 0) {
       const allResults = []
       const allErrors = []
-      
+
       for (let skillIndex = 0; skillIndex < activeFilters.skills.length; skillIndex++) {
         const skillName = activeFilters.skills[skillIndex]
-        setCurrentOperation(`Aggregating ${skillName} across ${top6Basetypes.length} basetypes...`)
-        
+        setCurrentOperation(`Aggregating ${skillName} across ${uncachedBasetypes.length} uncached basetypes...`)
+
         try {
           const { results, errors } = await aggregateBasetypes(
             activeFilters.snapshotId,
             category,
-            null, // attribute not needed since we're passing specific basetypes
-            top6Basetypes,
+            null,
+            uncachedBasetypes,
             skillName,
             (current, total, basetype) => {
-              const globalCurrent = skillIndex * top6Basetypes.length + current
-              const globalTotal = activeFilters.skills.length * top6Basetypes.length
+              const globalCurrent = skillIndex * uncachedBasetypes.length + current
+              const globalTotal = activeFilters.skills.length * uncachedBasetypes.length
               setLoadingProgress({ current: globalCurrent, total: globalTotal })
               setCurrentOperation(`${skillName} + ${basetype} (${globalCurrent}/${globalTotal})`)
             }
           )
-          
+
+          // Cache individual basetype results
+          results.forEach(result => {
+            const individualCacheKey = generateCacheKey({
+              ...activeFilters,
+              basetypes: [result.basetype]
+            })
+            // Store the raw result for this individual basetype
+            setFilterCache(prev => ({
+              ...prev,
+              [individualCacheKey]: { /* we'd need to structure this properly */ }
+            }))
+          })
+
           // Tag results with skill info
           const taggedResults = results.map(r => ({ ...r, skill: skillName }))
           allResults.push(...taggedResults)
           allErrors.push(...errors)
-          
+
         } catch (err) {
           allErrors.push({ skill: skillName, error: err.message })
         }
       }
-      
-      if (allResults.length > 0) {
-        const aggregatedData = aggregateBasetypeResults(allResults, activeFilters)
+
+      // Merge cached and new results
+      const combinedResults = [...allResults]
+
+      if (combinedResults.length > 0) {
+        const aggregatedData = aggregateBasetypeResults(combinedResults, activeFilters)
         return aggregatedData
       }
       setErrors(allErrors)
       return null
-      
+
     } else {
       // No skills - just aggregate basetypes
       try {
-        const { results, errors } = await aggregateBasetypes(
-          activeFilters.snapshotId,
-          category,
-          null,
-          top6Basetypes,
-          null,
-          (current, total, basetype) => {
-            setLoadingProgress({ current, total })
-            setCurrentOperation(`${basetype} (${current}/${total})`)
+        if (uncachedBasetypes.length > 0) {
+          const { results, errors } = await aggregateBasetypes(
+            activeFilters.snapshotId,
+            category,
+            null,
+            uncachedBasetypes,
+            null,
+            (current, total, basetype) => {
+              setLoadingProgress({ current, total })
+              setCurrentOperation(`${basetype} (${current}/${total})`)
+            }
+          )
+
+          // Cache individual basetype results
+          results.forEach(result => {
+            const individualCacheKey = generateCacheKey({
+              ...activeFilters,
+              basetypes: [result.basetype]
+            })
+            const individualResult = aggregateBasetypeResults([result], activeFilters)
+            setFilterCache(prev => ({
+              ...prev,
+              [individualCacheKey]: individualResult
+            }))
+            addDebugLog(`Cached individual basetype: ${result.basetype}`, 'success')
+          })
+
+          // Merge with cached results
+          const allResults = [...results]
+
+          if (allResults.length > 0 || cachedResults.length > 0) {
+            // Need to reconstruct from cache properly
+            const aggregatedData = aggregateBasetypeResults(allResults, activeFilters)
+            return aggregatedData
           }
-        )
-        
-        if (results.length > 0) {
-          const aggregatedData = aggregateBasetypeResults(results, activeFilters)
-          return aggregatedData
+          setErrors(errors)
+          return null
+        } else {
+          // All cached - use cached results
+          addDebugLog(`All basetypes cached - using cached data`, 'success')
+          // Need to aggregate cached results properly
+          return cachedResults[0]?.data || null
         }
-        setErrors(errors)
-        return null
-        
+
       } catch (err) {
         setErrors([{ error: err.message }])
         return null
@@ -246,10 +587,11 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     }
   }
 
-  const executeRegularFiltering = async () => {
-    const apiCalls = generateApiCalls(activeFilters)
+  const executeRegularFiltering = async (customFilters = null) => {
+    const filters = customFilters || activeFilters
+    const apiCalls = generateApiCalls(filters)
     setLoadingProgress({ current: 0, total: apiCalls.length })
-    
+
     if (apiCalls.length === 0) {
       setProcessedData(generateInitialData())
       return
@@ -257,32 +599,39 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
     const results = []
     const callErrors = []
-    
+
     for (let i = 0; i < apiCalls.length; i++) {
       const call = apiCalls[i]
       setCurrentOperation(`Fetching ${call.description}... (${i + 1}/${apiCalls.length})`)
       setLoadingProgress({ current: i, total: apiCalls.length })
-      
+
       try {
+        addDebugLog(`Making API call: ${call.description}`, 'info', call)
         const result = await fetchSkillFilteredData(
-          activeFilters.snapshotId,
+          filters.snapshotId,
           call.item,
           call.skill
         )
+        addDebugLog(`API call succeeded: ${call.description} - ${result.data.result.total} builds`, 'success', {
+          call,
+          buildCount: result.data.result.total,
+          dimensionCount: result.data.result.dimensions?.length || 0
+        })
         results.push({ ...result, metadata: call })
       } catch (err) {
+        addDebugLog(`API call failed: ${call.description} - ${err.message}`, 'error', { call, error: err.message })
         callErrors.push({ call, error: err.message })
       }
     }
-    
+
     setLoadingProgress({ current: apiCalls.length, total: apiCalls.length })
     setErrors(callErrors)
-    
+
     if (results.length > 0) {
       const aggregatedData = aggregateFilterResults(results)
       return aggregatedData
     }
-    
+
     return null
   }
 
@@ -324,10 +673,10 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     const groupData = allGroups.map(attribute => {
       // Check if this group contains any of our selected basetypes
       const isSelected = isGroupSelected(attribute, category, filters.basetypes)
-      
+
       return {
         key: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
-        name: `${attribute} ${category} (artificial)`,
+        name: `${attribute} ${category}`,
         count: isSelected ? totalBuilds : 0,
         percentage: isSelected ? 100.0 : 0.0,
         resolved: true,
@@ -335,7 +684,8 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
         groupKey: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
         groupItems: [], // We don't need the individual items for display
         attribute,
-        category
+        category,
+        isSelected
       }
     })
     
@@ -596,12 +946,13 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
   const processDimensionFromResults = (results, dimensionPrefix, trueTotal) => {
     const dimensionMap = new Map() // Group by dimension ID to avoid duplicates
-    
+    const rawDataMap = new Map() // Store raw ungrouped data
+
     results.forEach(result => {
-      const dimensions = result.data.result.dimensions?.filter(d => 
+      const dimensions = result.data.result.dimensions?.filter(d =>
         d.id === dimensionPrefix || d.id.startsWith(dimensionPrefix)
       ) || []
-      
+
       dimensions.forEach(dimension => {
         const dictionary = result.dictionaries[dimension.dictionaryId]
         if (!dictionary) return
@@ -613,6 +964,11 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
           percentage: parseFloat(((count.count / trueTotal) * 100).toFixed(1)),
           resolved: !!dictionary.values[count.key]
         }))
+
+        // Store raw data before grouping (for itembasetypes)
+        if (dimension.id.startsWith('itembasetypes-')) {
+          rawDataMap.set(dimension.id, processedData)
+        }
 
         // Apply attribute grouping for itembasetypes
         let finalData = processedData
@@ -636,18 +992,19 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
             }
             return acc
           }, [])
-          
+
           existing.data = uniqueData.sort((a, b) => b.count - a.count).slice(0, 50)
         } else {
           dimensionMap.set(dimension.id, {
             id: dimension.id,
             dictionaryId: dimension.dictionaryId,
-            data: finalData.sort((a, b) => b.count - a.count).slice(0, 50)
+            data: finalData.sort((a, b) => b.count - a.count).slice(0, 50),
+            rawData: rawDataMap.get(dimension.id) // Attach raw ungrouped data
           })
         }
       })
     })
-    
+
     return Array.from(dimensionMap.values())
   }
 
@@ -769,21 +1126,137 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     }))
   }
 
-  const handleGroupClick = (group) => {
-    // Get the top 6 basetypes from the correct priority order
-    const category = extractCategoryFromItem(activeFilters.items[0])
-    const attributeGroups = getAttributeGroupsForCategory(category)
-    const basetypeNames = attributeGroups[group.attribute] || []
-    
-    // Take top 6 from priority order
-    const top6Basetypes = basetypeNames.slice(0, 6)
-    
-    console.log(`🎯 Group click: ${group.name}`)
-    console.log(`📋 Top 6 basetypes:`, top6Basetypes)
-    
-    setActiveFilters(prev => ({
+  const handleGroupClick = async (group) => {
+    // Check if this group is already selected (toggle behavior)
+    if (group.isSelected) {
+      addDebugLog(`Group unselect: ${group.name}`, 'info')
+      setActiveFilters(prev => ({
+        ...prev,
+        basetypes: []
+      }))
+      setExpandedGroups(new Set())
+      setPendingSelections(null)
+    } else {
+      // Get selections for this group (custom or default)
+      const category = extractCategoryFromItem(activeFilters.items[0])
+      const groupKey = group.groupKey
+      const selections = getSelectionsForGroup(category, groupKey, group.attribute)
+
+      addDebugLog(`Group select: ${group.name} - applying immediately`, 'info', { selections })
+
+      // Collapse all other groups, expand this one
+      setExpandedGroups(new Set([groupKey]))
+
+      // Enter selection mode with pending state (for checkboxes)
+      setPendingSelections({
+        dimension: 'basetypes',
+        groupKey,
+        category,
+        attribute: group.attribute,
+        items: selections
+      })
+
+      // Apply immediately
+      setActiveFilters(prev => ({
+        ...prev,
+        basetypes: selections
+      }))
+    }
+  }
+
+  // Toggle group expansion (preview mode)
+  const toggleGroupExpansion = (groupKey) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey)
+        addDebugLog(`Collapsed group: ${groupKey}`, 'info')
+      } else {
+        newSet.add(groupKey)
+        addDebugLog(`Expanded group: ${groupKey} - preview mode`, 'info')
+      }
+      return newSet
+    })
+  }
+
+  // Handle basetype checkbox toggle
+  const handleBasetypeToggle = (basetype, groupKey, category, attribute) => {
+    if (!pendingSelections) {
+      // Starting from preview mode - select only this basetype and apply immediately
+      addDebugLog(`Single basetype select from preview - applying immediately: ${basetype}`, 'info')
+
+      setExpandedGroups(new Set([groupKey]))
+      setPendingSelections({
+        dimension: 'basetypes',
+        groupKey,
+        category,
+        attribute,
+        items: [basetype]
+      })
+
+      // Apply immediately
+      setActiveFilters(prev => ({
+        ...prev,
+        basetypes: [basetype]
+      }))
+      return
+    }
+
+    // Toggle in existing selection (manual checkbox change in selection mode)
+    setPendingSelections(prev => {
+      const newItems = prev.items.includes(basetype)
+        ? prev.items.filter(item => item !== basetype)
+        : [...prev.items, basetype]
+
+      addDebugLog(`Toggled basetype: ${basetype}`, 'info', { newItems })
+
+      return {
+        ...prev,
+        items: newItems
+      }
+    })
+  }
+
+  // Apply pending selections
+  const applyPendingSelections = () => {
+    if (!pendingSelections) return
+
+    const { items, category, groupKey } = pendingSelections
+
+    if (items.length === 0) {
+      // Empty selection - revert to no basetype filter
+      addDebugLog(`Applying empty selection - reverting to no basetypes`, 'info')
+      saveCustomSelections(category, groupKey, [])
+      setActiveFilters(prev => ({ ...prev, basetypes: [] }))
+      setPendingSelections(null)
+      setExpandedGroups(new Set())
+    } else {
+      // Apply selection and keep pendingSelections for visual state
+      addDebugLog(`Applying pending selections`, 'info', { items })
+      saveCustomSelections(category, groupKey, items)
+      setActiveFilters(prev => ({ ...prev, basetypes: items }))
+      // Keep pendingSelections so green highlighting persists
+    }
+  }
+
+  // Cancel pending selections
+  const cancelPendingSelections = () => {
+    addDebugLog(`Cancelling pending selections`, 'info')
+    setPendingSelections(null)
+  }
+
+  // Reset to top 6 for current group
+  const resetToTopSix = () => {
+    if (!pendingSelections) return
+
+    const { category, attribute } = pendingSelections
+    const defaultSelections = getDefaultSelections(category, attribute)
+
+    addDebugLog(`Resetting to top 6`, 'info', { defaultSelections })
+
+    setPendingSelections(prev => ({
       ...prev,
-      basetypes: top6Basetypes
+      items: defaultSelections
     }))
   }
 
@@ -794,7 +1267,10 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
       basetypes: [],
       skills: []
     }))
+    setPendingSelections(null)
+    setExpandedGroups(new Set())
   }
+
 
   if (!isOpen) return null
 
@@ -804,7 +1280,38 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
       <div className="overlay-content">
         <div className="overlay-header">
           <div className="header-left">
-            <h2>POE.ninja Analysis</h2>
+            <div className="header-title-row">
+              <h2>POE.ninja Analysis</h2>
+              {insufficientDataError ? (
+                <div className="header-status insufficient-data">
+                  <span className="status-icon">⚠️</span>
+                  <span className="status-text">
+                    {insufficientDataError.message}
+                  </span>
+                  <button className="retry-btn" onClick={retryInsufficientData}>
+                    🔄 Retry
+                  </button>
+                </div>
+              ) : (isLoading || cacheStatus) && (
+                <div className="header-status">
+                  {isLoading && <div className="small-spinner"></div>}
+                  <span className="status-text">
+                    {isLoading ? (
+                      <>
+                        {currentOperation}
+                        {loadingProgress.total > 0 && (
+                          <span className="progress-info">
+                            {' '}({loadingProgress.current}/{loadingProgress.total})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      cacheStatus
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
             {hasActiveFilters() && (
               <div className="current-filters">
                 {activeFilters.items.map(item => (
@@ -831,30 +1338,16 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                 Clear Filters
               </button>
             )}
+            <button 
+              className={`debug-toggle-btn ${debugPanelOpen ? 'active' : ''}`} 
+              onClick={toggleDebugPanel}
+              title="Toggle Debug Panel"
+            >
+              🐛 Debug
+            </button>
             <button className="overlay-close" onClick={onClose}>×</button>
           </div>
         </div>
-        
-        {/* Loading Banner */}
-        {(isLoading || cacheStatus) && (
-          <div className="loading-banner">
-            {isLoading && <div className="loading-spinner"></div>}
-            <div className="loading-details">
-              {isLoading ? (
-                <>
-                  <span>{currentOperation}</span>
-                  {loadingProgress.total > 0 && (
-                    <span className="progress-info">
-                      ({loadingProgress.current}/{loadingProgress.total})
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span>{cacheStatus}</span>
-              )}
-            </div>
-          </div>
-        )}
         
         <div className="overlay-columns">
             {/* Column 1: Items */}
@@ -870,13 +1363,9 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
               <div className="column-content">
                 {processedData?.items?.map((dimension, dimIndex) => (
                   <div key={dimIndex} className="dimension-section">
-                    <h4>{dimension.id}</h4>
-                    <div className="column-stats">
-                      {dimension.data.length} rare items
-                    </div>
                     {dimension.data.map((item, index) => (
-                      <div 
-                        key={index} 
+                      <div
+                        key={index}
                         className={`data-item clickable ${activeFilters.items.includes(item.name) ? 'selected-skill' : ''}`}
                         onClick={() => handleItemClick(item)}
                       >
@@ -894,30 +1383,156 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
             <div className="overlay-column">
               <div className="column-header">
                 <h3>Item Basetypes</h3>
-                {activeFilters.basetypes.length > 0 && (
+                {activeFilters.basetypes.length > 0 && !pendingSelections && (
                   <button className="unselect-button" onClick={() => setActiveFilters(prev => ({...prev, basetypes: []}))}>
                     Unselect Group
                   </button>
                 )}
+                {pendingSelections && (
+                  <button className="unselect-button" onClick={resetToTopSix}>
+                    Reset to Top 6
+                  </button>
+                )}
               </div>
-              <div className="column-content">
+              <div className="column-content" style={{ position: 'relative', paddingBottom: pendingSelections ? '80px' : '0' }}>
                 {activeFilters.items.length > 0 ? (
-                  processedData?.itembasetypes?.map((dimension, dimIndex) => (
-                    <div key={dimIndex} className="dimension-section">
-                      <h4>{dimension.id}</h4>
-                      {dimension.data.map((item, index) => (
-                        <div 
-                          key={index} 
-                          className={`data-item ${item.isGroup ? 'group-item clickable' : ''}`}
-                          onClick={() => item.isGroup && handleGroupClick(item)}
-                        >
-                          <span className="item-name">{item.name}</span>
-                          <span className="item-count">{item.count}</span>
-                          <span className="item-percentage">{item.percentage}%</span>
+                  <>
+                    {processedData?.itembasetypes?.map((dimension, dimIndex) => {
+                      const basetypeData = extractBasetypeData(parentCallData || processedData)
+
+                      return (
+                        <div key={dimIndex} className="dimension-section">
+                          {dimension.data.map((group, index) => {
+                            const isExpanded = expandedGroups.has(group.groupKey)
+                            const isInSelectionMode = pendingSelections?.groupKey === group.groupKey
+                            const nestedItems = basetypeData?.groupItems?.[group.attribute] || []
+
+                            return (
+                              <div key={index} className="group-container">
+                                {/* Group Header Row */}
+                                <div className={`data-item group-item ${group.isSelected ? 'selected-skill' : ''}`}>
+                                  {/* Expand/Collapse Button */}
+                                  <button
+                                    className="expand-button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      toggleGroupExpansion(group.groupKey)
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      fontSize: '18px',
+                                      padding: '0 8px 0 0',
+                                      color: '#9ca3af'
+                                    }}
+                                  >
+                                    {isExpanded ? '▼' : '▶'}
+                                  </button>
+
+                                  {/* Group Name (clickable) */}
+                                  <div
+                                    className="clickable"
+                                    onClick={() => handleGroupClick(group)}
+                                    style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '10px' }}
+                                  >
+                                    <span className="item-name">{group.name}</span>
+                                    <span className="item-count">{group.count}</span>
+                                    <span className="item-percentage">{group.percentage}%</span>
+                                  </div>
+                                </div>
+
+                                {/* Nested List */}
+                                {isExpanded && nestedItems.length > 0 && (
+                                  <div className="nested-basetype-list" style={{
+                                    marginLeft: '30px',
+                                    borderLeft: '2px solid #374151',
+                                    paddingLeft: '10px'
+                                  }}>
+                                    {nestedItems.map((basetype, btIndex) => {
+                                      const isSelected = isInSelectionMode && pendingSelections.items.includes(basetype.name)
+
+                                      return (
+                                        <div
+                                          key={btIndex}
+                                          className={`data-item nested-item ${isSelected ? 'selected-skill' : ''}`}
+                                          onClick={() => handleBasetypeToggle(basetype.name, group.groupKey, basetypeData.category, group.attribute)}
+                                          style={{
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          <span className="item-name" style={{ flex: 1 }}>{basetype.name}</span>
+                                          <span className="item-count">{basetype.count}</span>
+                                          <span className="item-percentage">{basetype.percentageOfGroup}%</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  ))
+                      )
+                    })}
+
+                    {/* Apply/Cancel Bar */}
+                    {pendingSelections && pendingSelections.dimension === 'basetypes' && (() => {
+                      // Check if pending selection differs from active filters
+                      const pendingDifferent = JSON.stringify(pendingSelections.items.sort()) !== JSON.stringify(activeFilters.basetypes.sort())
+
+                      if (pendingDifferent) {
+                        return (
+                          <div className="pending-action-bar" style={{
+                            position: 'sticky',
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            background: '#1f2937',
+                            borderTop: '2px solid #f59e0b',
+                            padding: '12px 16px',
+                            zIndex: 10
+                          }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+                              <div style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 'bold' }}>
+                                ⚠ {pendingSelections.items.length} basetype{pendingSelections.items.length !== 1 ? 's' : ''} selected (pending)
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  onClick={applyPendingSelections}
+                                  style={{
+                                    background: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  Apply Changes
+                                </button>
+                                <button
+                                  onClick={cancelPendingSelections}
+                                  style={{
+                                    background: '#6b7280',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+                  </>
                 ) : (
                   <div className="placeholder-text" style={{padding: '40px 20px', textAlign: 'center', color: '#9ca3af'}}>
                     Select an item to view basetypes
@@ -935,10 +1550,6 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                 {activeFilters.items.length > 0 ? (
                   processedData?.itemmods?.map((dimension, dimIndex) => (
                     <div key={dimIndex} className="dimension-section">
-                      <h4>{dimension.id}</h4>
-                      <div className="column-stats">
-                        {dimension.data.length} modifiers
-                      </div>
                       {dimension.data.map((item, index) => (
                         <div key={index} className="data-item">
                           <span className="item-name">{item.name}</span>
@@ -964,13 +1575,9 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
               <div className="column-content">
                 {processedData?.skills?.map((dimension, dimIndex) => (
                   <div key={dimIndex} className="dimension-section">
-                    <h4>{dimension.id}</h4>
-                    <div className="column-stats">
-                      {dimension.data.length} skills
-                    </div>
                     {dimension.data.map((item, index) => (
-                      <div 
-                        key={index} 
+                      <div
+                        key={index}
                         className={`data-item clickable ${activeFilters.skills.includes(item.name) ? 'selected-skill' : ''}`}
                         onClick={() => handleSkillClick(item)}
                       >
@@ -984,6 +1591,116 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
               </div>
             </div>
         </div>
+        
+        {/* Debug Panel */}
+        {debugPanelOpen && (
+          <div className="debug-panel">
+            <div className="debug-header">
+              <h3>🐛 Debug Panel</h3>
+              <div className="debug-tabs">
+                <button 
+                  className={`debug-tab ${debugActiveTab === 'dimensions' ? 'active' : ''}`}
+                  onClick={() => setDebugActiveTab('dimensions')}
+                >
+                  Dimensions
+                </button>
+                <button 
+                  className={`debug-tab ${debugActiveTab === 'logs' ? 'active' : ''}`}
+                  onClick={() => setDebugActiveTab('logs')}
+                >
+                  Logs ({debugLogs.length})
+                </button>
+                <button 
+                  className={`debug-tab ${debugActiveTab === 'raw' ? 'active' : ''}`}
+                  onClick={() => setDebugActiveTab('raw')}
+                >
+                  Raw Data
+                </button>
+              </div>
+            </div>
+            
+            <div className="debug-content">
+              {debugActiveTab === 'dimensions' && (
+                <div className="debug-dimensions">
+                  <h4>Available Dimensions</h4>
+                  {processedData ? (
+                    <div className="dimensions-grid">
+                      {Object.entries(processedData).map(([key, dimensions]) => (
+                        <div key={key} className="dimension-category">
+                          <h5>{key}</h5>
+                          {Array.isArray(dimensions) ? dimensions.map((dim, index) => (
+                            <div key={index} className="dimension-card" onClick={() => addDebugLog(`Clicked dimension: ${dim.id}`, 'info', dim)}>
+                              <div className="dimension-name">{dim.id}</div>
+                              <div className="dimension-stats">
+                                {dim.data?.length || 0} items | Total: {dim.total || 0}
+                              </div>
+                            </div>
+                          )) : (
+                            <div className="dimension-card">
+                              <div className="dimension-name">Non-array data</div>
+                              <div className="dimension-stats">Type: {typeof dimensions}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="no-data">No processed data available</div>
+                  )}
+                </div>
+              )}
+              
+              {debugActiveTab === 'logs' && (
+                <div className="debug-logs">
+                  <div className="logs-header">
+                    <h4>Debug Logs</h4>
+                    <button onClick={() => setDebugLogs([])} className="clear-logs-btn">Clear Logs</button>
+                  </div>
+                  <div className="logs-list">
+                    {debugLogs.map(log => (
+                      <div key={log.id} className={`log-entry log-${log.type}`}>
+                        <span className="log-time">{log.timestamp}</span>
+                        <span className="log-type">[{log.type.toUpperCase()}]</span>
+                        <span className="log-message">{log.message}</span>
+                        {log.data && (
+                          <div className="log-data">
+                            <pre>{JSON.stringify(log.data, null, 2)}</pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {debugLogs.length === 0 && (
+                      <div className="no-logs">No debug logs yet</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {debugActiveTab === 'raw' && (
+                <div className="debug-raw">
+                  <h4>Raw Data Inspector</h4>
+                  <div className="raw-data-section">
+                    <h5>Initial Data</h5>
+                    <pre className="json-viewer">{JSON.stringify(initialData, null, 2)}</pre>
+                  </div>
+                  <div className="raw-data-section">
+                    <h5>Dictionaries</h5>
+                    <pre className="json-viewer">{JSON.stringify(dictionaries, null, 2)}</pre>
+                  </div>
+                  <div className="raw-data-section">
+                    <h5>Processed Data</h5>
+                    <pre className="json-viewer">{JSON.stringify(processedData, null, 2)}</pre>
+                  </div>
+                  <div className="raw-data-section">
+                    <h5>Active Filters</h5>
+                    <pre className="json-viewer">{JSON.stringify(activeFilters, null, 2)}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         </div>
       </div>
     

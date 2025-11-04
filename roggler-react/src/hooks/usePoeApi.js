@@ -25,6 +25,7 @@ const usePoeApi = () => {
     }
   }
 
+
   // Fetch top-level data from POE.ninja API
   const fetchTopLevelData = async (snapshotId) => {
     setLoading(true)
@@ -53,6 +54,8 @@ const usePoeApi = () => {
       const data = await response.arrayBuffer()
       const decoded = window.ProtobufDecoder.NinjaSearchResult.fromBinary(data)
       
+      // Top-level data should always be cached regardless of total count
+      // since it's just getting the list of available items
       setCurrentData(decoded)
       
       // Load dictionaries if available
@@ -61,7 +64,7 @@ const usePoeApi = () => {
         loadedDictionaries = await loadDictionaries(decoded.result.dictionaries)
       }
       
-      // Cache the result
+      // Cache the result (only if we have sufficient data)
       setCache(prev => ({
         ...prev,
         [cacheKey]: {
@@ -127,7 +130,7 @@ const usePoeApi = () => {
         loadedDictionaries = await loadDictionaries(decoded.result.dictionaries)
       }
       
-      // Cache the result
+      // Cache the result (only if we have sufficient data)
       setCache(prev => ({
         ...prev,
         [cacheKey]: {
