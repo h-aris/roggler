@@ -4,8 +4,9 @@ import AnalysisOverlay from './AnalysisOverlay'
 import './MainAnalysisLegacy.css'
 
 const MainAnalysisLegacy = ({ onAggregationOpen }) => {
-  const [snapshotId, setSnapshotId] = useState('1618-20251103-59847')
+  const [snapshotId, setSnapshotId] = useState('latest')
   const [showCustomSnapshot, setShowCustomSnapshot] = useState(false)
+  const [customSnapshotInput, setCustomSnapshotInput] = useState('')
   const [selectedRareItem, setSelectedRareItem] = useState('')
   const [messages, setMessages] = useState([])
   const [showAnalysis, setShowAnalysis] = useState(false)
@@ -16,11 +17,22 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
   
   const { loading, error, currentData, dictionaries, fetchData, fetchTopLevelData } = usePoeApi()
   
+  const predefinedSnapshots = [
+    '0826-20251106-36978',
+    'latest',
+    '1041-20251106-22974',
+    '1618-20251103-59847',
+    '0955-20251103-36793',
+    '2006-20251102-24503'
+  ]
+
+  const isCustomSnapshot = snapshotId && !predefinedSnapshots.includes(snapshotId)
+
   const rareItems = [
-    "Rare Amulet", "Rare Belt", "Rare Body Armour", "Rare Boots", "Rare Bow", 
-    "Rare Claw", "Rare Dagger", "Rare Gloves", "Rare Graft", "Rare Helmet", 
-    "Rare Jewel", "Rare One Handed Axe", "Rare One Handed Mace", "Rare One Handed Sword", 
-    "Rare Quiver", "Rare Ring", "Rare Shield", "Rare Staff", "Rare Two Handed Axe", 
+    "Rare Amulet", "Rare Belt", "Rare Body Armour", "Rare Boots", "Rare Bow",
+    "Rare Claw", "Rare Dagger", "Rare Gloves", "Rare Graft", "Rare Helmet",
+    "Rare Jewel", "Rare One Handed Axe", "Rare One Handed Mace", "Rare One Handed Sword",
+    "Rare Quiver", "Rare Ring", "Rare Shield", "Rare Staff", "Rare Two Handed Axe",
     "Rare Two Handed Mace", "Rare Two Handed Sword", "Rare Wand"
   ]
   
@@ -266,15 +278,22 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
             value={snapshotId}
             onChange={(e) => {
               if (e.target.value === 'custom') {
+                setCustomSnapshotInput('')
                 setShowCustomSnapshot(true)
               } else {
                 setSnapshotId(e.target.value)
               }
             }}
           >
-            <option value="1618-20251103-59847">1618-20251103-59847 (Latest - Nov 3, 2025)</option>
+            <option value="0826-20251106-36978">0826-20251106-36978 (Latest - Nov 6, 2025)</option>
+            <option value="latest">latest (Auto-detect latest snapshot)</option>
+            <option value="1041-20251106-22974">1041-20251106-22974 (Nov 6, 2025)</option>
+            <option value="1618-20251103-59847">1618-20251103-59847 (Nov 3, 2025)</option>
             <option value="0955-20251103-36793">0955-20251103-36793 (Nov 3, 2025)</option>
             <option value="2006-20251102-24503">2006-20251102-24503 (Nov 2, 2025)</option>
+            {isCustomSnapshot && (
+              <option value={snapshotId}>{snapshotId} (Custom)</option>
+            )}
             <option value="custom">Custom...</option>
           </select>
         </div>
@@ -412,11 +431,11 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
                 type="text"
                 className="form-input"
                 placeholder="e.g., 1618-20251103-59847"
-                value={snapshotId === 'custom' ? '' : snapshotId}
+                value={customSnapshotInput}
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setSnapshotId(e.target.value)
+                  if (e.key === 'Enter' && customSnapshotInput.trim()) {
+                    setSnapshotId(customSnapshotInput.trim())
                     setShowCustomSnapshot(false)
                   }
                   if (e.key === 'Escape') {
@@ -424,22 +443,23 @@ const MainAnalysisLegacy = ({ onAggregationOpen }) => {
                   }
                 }}
                 onChange={(e) => {
-                  // Allow typing in the input
+                  setCustomSnapshotInput(e.target.value)
                 }}
               />
               <div className="modal-buttons">
-                <button 
-                  className="btn-secondary" 
+                <button
+                  className="btn-secondary"
                   onClick={() => setShowCustomSnapshot(false)}
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   className="btn-primary"
-                  onClick={(e) => {
-                    const input = e.target.parentElement.previousElementSibling
-                    setSnapshotId(input.value)
-                    setShowCustomSnapshot(false)
+                  onClick={() => {
+                    if (customSnapshotInput.trim()) {
+                      setSnapshotId(customSnapshotInput.trim())
+                      setShowCustomSnapshot(false)
+                    }
                   }}
                 >
                   Apply

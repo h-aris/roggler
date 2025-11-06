@@ -25,6 +25,22 @@ const usePoeApi = () => {
     }
   }
 
+  // Extract category from rare item name and get modifier dimension key
+  const extractCategoryFromRareItem = (rareItem) => {
+    if (!rareItem) return null
+    const match = rareItem.match(/^Rare (.+)$/)
+    return match ? match[1] : null
+  }
+
+  const getModifierDimensionKey = (category) => {
+    const weaponTypes = [
+      'Bow', 'Claw', 'Dagger', 'One Handed Axe', 'One Handed Mace', 'One Handed Sword',
+      'Rune Dagger', 'Sceptre', 'Staff', 'Two Handed Axe', 'Two Handed Mace',
+      'Two Handed Sword', 'Wand', 'Warstaff', 'Fishing Rod'
+    ]
+    return weaponTypes.includes(category) ? 'itemmods-Weapon' : `itemmods-${category}`
+  }
+
 
   // Fetch top-level data from POE.ninja API
   const fetchTopLevelData = async (snapshotId) => {
@@ -184,23 +200,48 @@ const usePoeApi = () => {
     return newDictionaries
   }
 
-  // Fetch data with optional skill filter
-  const fetchSkillFilteredData = async (snapshotId, rareItem, skillName) => {
+  // Fetch data with optional modifiers and skills (supports arrays as AND gate)
+  const fetchSkillFilteredData = async (snapshotId, rareItem, modifiers, skills) => {
     try {
       await waitForProtobuf()
-      
-      let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?overview=keepers&type=exp`
-      
+
+      // Build URL with correct parameter order: items, itembasetypes, itemmods, skills, overview, type
+      let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?`
+      const params = []
+
       // Add rare item if provided
       if (rareItem) {
-        apiUrl += `&items=${encodeURIComponent(rareItem)}`
+        params.push(`items=${encodeURIComponent(rareItem)}`)
       }
-      
-      // Add skill filter if provided
-      if (skillName) {
-        apiUrl += `&skills=${encodeURIComponent(skillName)}`
+
+      // Add modifier filters if provided (supports array of modifiers for AND gate)
+      if (modifiers) {
+        const modsArray = Array.isArray(modifiers) ? modifiers : [modifiers]
+        const category = extractCategoryFromRareItem(rareItem)
+        const modKey = getModifierDimensionKey(category)
+        modsArray.forEach(mod => {
+          if (mod) {
+            params.push(`${modKey}=${encodeURIComponent(mod)}`)
+          }
+        })
       }
-      
+
+      // Add skill filters if provided (supports array of skills for AND gate)
+      if (skills) {
+        const skillsArray = Array.isArray(skills) ? skills : [skills]
+        skillsArray.forEach(skill => {
+          if (skill) {
+            params.push(`skills=${encodeURIComponent(skill)}`)
+          }
+        })
+      }
+
+      // Always end with overview and type
+      params.push('overview=keepers')
+      params.push('type=exp')
+
+      apiUrl += params.join('&')
+
       const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
       
       const response = await fetch(proxyUrl)
@@ -245,8 +286,8 @@ const usePoeApi = () => {
     return dictionaries
   }
 
-  // Aggregate data across multiple basetypes with optional skill filter
-  const aggregateBasetypes = async (snapshotId, category, attribute, basetypes, skillName = null, onProgress = null) => {
+  // Aggregate data across multiple basetypes with optional modifiers and skills
+  const aggregateBasetypes = async (snapshotId, category, attribute, basetypes, modifiers = null, skills = null, onProgress = null) => {
     const results = []
     const errors = []
     
@@ -261,9 +302,16 @@ const usePoeApi = () => {
       'Helmet': 'Rare Helmet',
       'Shield': 'Rare Shield'
     }
-    
+
+    // All weapon types use 'Weapon' dimension key
+    const weaponTypes = [
+      'Bow', 'Claw', 'Dagger', 'One Handed Axe', 'One Handed Mace', 'One Handed Sword',
+      'Rune Dagger', 'Sceptre', 'Staff', 'Two Handed Axe', 'Two Handed Mace',
+      'Two Handed Sword', 'Wand', 'Warstaff', 'Fishing Rod'
+    ]
+
     const rareItemType = rareItemTypeMap[category] || `Rare ${category}`
-    const dimensionKey = `itembasetypes-${category}`
+    const dimensionKey = weaponTypes.includes(category) ? 'itembasetypes-Weapon' : `itembasetypes-${category}`
     
     for (let i = 0; i < top6Basetypes.length; i++) {
       const basetype = top6Basetypes[i]
@@ -273,13 +321,39 @@ const usePoeApi = () => {
         onProgress(i, top6Basetypes.length, basetype)
       }
       try {
-        let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItemType)}&${dimensionKey}=${encodeURIComponent(basetype)}&overview=keepers&type=exp`
-        
-        // Add skill filter if provided
-        if (skillName) {
-          apiUrl += `&skills=${encodeURIComponent(skillName)}`
+        // Build URL with correct parameter order: items, itembasetypes, itemmods, skills, overview, type
+        const params = [
+          `items=${encodeURIComponent(rareItemType)}`,
+          `${dimensionKey}=${encodeURIComponent(basetype)}`
+        ]
+
+        // Add modifier filters if provided
+        if (modifiers) {
+          const modsArray = Array.isArray(modifiers) ? modifiers : [modifiers]
+          const modKey = getModifierDimensionKey(category)
+          modsArray.forEach(mod => {
+            if (mod) {
+              params.push(`${modKey}=${encodeURIComponent(mod)}`)
+            }
+          })
         }
-        
+
+        // Add skill filters if provided
+        if (skills) {
+          const skillsArray = Array.isArray(skills) ? skills : [skills]
+          skillsArray.forEach(skill => {
+            if (skill) {
+              params.push(`skills=${encodeURIComponent(skill)}`)
+            }
+          })
+        }
+
+        // Always end with overview and type
+        params.push('overview=keepers')
+        params.push('type=exp')
+
+        let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?${params.join('&')}`
+
         const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
         
         const response = await fetch(proxyUrl)

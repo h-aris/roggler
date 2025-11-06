@@ -8,6 +8,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     snapshotId: '',
     items: [],
     basetypes: [],
+    modifiers: [],
     skills: []
   })
   
@@ -70,54 +71,179 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     }
   }
 
+  // Generate combo key from current filter state (excluding basetypes)
+  const generateComboKey = (filters) => {
+    const parts = []
+    if (filters.items.length > 0) parts.push(`items:${filters.items.sort().join(',')}`)
+    // Only use first skill for now (multi-skill will use AND gate in future)
+    if (filters.skills.length > 0) parts.push(`skills:${filters.skills[0]}`)
+    // Future: if (filters.mods.length > 0) parts.push(`mods:${filters.mods.sort().join(',')}`)
+    return parts.join('|') || 'base'
+  }
+
   // Load custom selections from localStorage
   const loadCustomSelections = () => {
     try {
       const saved = localStorage.getItem('basetypeSelections')
-      return saved ? JSON.parse(saved) : {}
+      const data = saved ? JSON.parse(saved) : {}
+
+      // Check size and cleanup if needed (5MB limit)
+      const sizeInBytes = new Blob([saved || '']).size
+      const maxSize = 5 * 1024 * 1024 // 5MB
+
+      if (sizeInBytes > maxSize) {
+        addDebugLog(`localStorage size limit exceeded (${(sizeInBytes / 1024 / 1024).toFixed(2)}MB), cleaning up...`, 'warning')
+        return cleanupOldestCombos(data, maxSize)
+      }
+
+      return data
     } catch (e) {
       console.error('Failed to load custom selections:', e)
       return {}
     }
   }
 
-  // Save custom selections to localStorage
+  // Cleanup oldest combos to stay under size limit
+  const cleanupOldestCombos = (data, maxSize) => {
+    // Flatten all combos with timestamps
+    const allCombos = []
+    Object.keys(data).forEach(category => {
+      Object.keys(data[category]).forEach(groupKey => {
+        const groupData = data[category][groupKey]
+        if (typeof groupData === 'object' && !Array.isArray(groupData)) {
+          // New format: combo-specific
+          Object.keys(groupData).forEach(comboKey => {
+            allCombos.push({
+              category,
+              groupKey,
+              comboKey,
+              data: groupData[comboKey],
+              timestamp: groupData[comboKey].timestamp || 0
+            })
+          })
+        }
+      })
+    })
+
+    // Sort by timestamp (oldest first)
+    allCombos.sort((a, b) => a.timestamp - b.timestamp)
+
+    // Remove oldest until size is acceptable
+    const cleaned = {}
+    let currentSize = 0
+    const targetSize = maxSize * 0.9 // Stay at 90% of limit
+
+    for (let i = allCombos.length - 1; i >= 0; i--) {
+      const combo = allCombos[i]
+      if (!cleaned[combo.category]) cleaned[combo.category] = {}
+      if (!cleaned[combo.category][combo.groupKey]) cleaned[combo.category][combo.groupKey] = {}
+
+      cleaned[combo.category][combo.groupKey][combo.comboKey] = combo.data
+
+      currentSize = new Blob([JSON.stringify(cleaned)]).size
+      if (currentSize > targetSize) {
+        // Remove this one and stop
+        delete cleaned[combo.category][combo.groupKey][combo.comboKey]
+        break
+      }
+    }
+
+    localStorage.setItem('basetypeSelections', JSON.stringify(cleaned))
+    addDebugLog(`Cleaned up to ${(currentSize / 1024 / 1024).toFixed(2)}MB`, 'success')
+    return cleaned
+  }
+
+  // Save custom selections to localStorage with combo-specific key
   const saveCustomSelections = (category, groupKey, items) => {
     try {
       const current = loadCustomSelections()
+      const comboKey = generateComboKey(activeFilters)
+
       if (!current[category]) current[category] = {}
+      if (!current[category][groupKey]) current[category][groupKey] = {}
 
       if (items.length === 0) {
-        // Remove the entry if empty
-        delete current[category][groupKey]
+        // Remove the combo entry if empty
+        delete current[category][groupKey][comboKey]
+        if (Object.keys(current[category][groupKey]).length === 0) {
+          delete current[category][groupKey]
+        }
         if (Object.keys(current[category]).length === 0) {
           delete current[category]
         }
       } else {
-        current[category][groupKey] = items
+        current[category][groupKey][comboKey] = {
+          items,
+          timestamp: Date.now()
+        }
       }
 
       localStorage.setItem('basetypeSelections', JSON.stringify(current))
-      addDebugLog(`Saved custom selections for ${groupKey}`, 'info', { category, groupKey, items })
+      addDebugLog(`Saved custom selections for ${groupKey} (${comboKey})`, 'info', { category, groupKey, comboKey, items })
     } catch (e) {
       console.error('Failed to save custom selections:', e)
     }
   }
 
-  // Get default selections (top 6 from priority list)
-  const getDefaultSelections = (category, attribute) => {
+  // Get default selections (top 6 from priority list - fallback)
+  const getDefaultSelectionsByPriority = (category, attribute) => {
     const attributeGroups = getAttributeGroupsForCategory(category)
-    const allBasetypes = attributeGroups[attribute] || []
+
+    if (attribute === 'ungrouped') {
+      // For ungrouped, we don't have a priority list - must use count-based
+      return []
+    }
+
+    const allBasetypes = attributeGroups?.[attribute] || []
     return allBasetypes.slice(0, 6)
   }
 
-  // Get selections for a group (custom or default)
+  // Get top 6 basetypes by count from parent data
+  const getTop6ByCount = (category, attribute) => {
+    const basetypeData = extractBasetypeData(parentCallData || processedData)
+
+    if (!basetypeData) {
+      addDebugLog(`⚠️ Using default priority order (parent data unavailable)`, 'warning')
+      return getDefaultSelectionsByPriority(category, attribute)
+    }
+
+    const groupItems = basetypeData.groupItems?.[attribute]
+
+    if (!groupItems || groupItems.length === 0) {
+      // Fallback to priority order
+      if (attribute === 'ungrouped') {
+        addDebugLog(`⚠️ No basetype data for ungrouped - using all available`, 'warning')
+        return []
+      }
+      addDebugLog(`⚠️ Using default priority order (no count data for ${attribute})`, 'warning')
+      return getDefaultSelectionsByPriority(category, attribute)
+    }
+
+    // Sort by count and take top 6
+    const top6 = groupItems
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6)
+      .map(item => item.name)
+
+    addDebugLog(`Calculated top 6 by count for ${attribute}`, 'info', { top6 })
+    return top6
+  }
+
+  // Get selections for a group (custom combo-specific or top 6 by count)
   const getSelectionsForGroup = (category, groupKey, attribute) => {
     const customSelections = loadCustomSelections()
-    if (customSelections[category]?.[groupKey]) {
-      return customSelections[category][groupKey]
+    const comboKey = generateComboKey(activeFilters)
+
+    // Check for combo-specific preference
+    const comboData = customSelections[category]?.[groupKey]?.[comboKey]
+    if (comboData && Array.isArray(comboData.items)) {
+      addDebugLog(`Using saved preference for ${groupKey} (${comboKey})`, 'info', { items: comboData.items })
+      return comboData.items
     }
-    return getDefaultSelections(category, attribute)
+
+    // No preference for this combo - use top 6 by count
+    addDebugLog(`No preference for ${groupKey} (${comboKey}) - using top 6 by count`, 'info')
+    return getTop6ByCount(category, attribute)
   }
 
   // Check if the result has insufficient data
@@ -184,6 +310,16 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     const parentState = getParentCallState(activeFilters)
     const parentCacheKey = generateCacheKey(parentState)
 
+    // If parent state is same as current (no basetypes), use current data
+    if (activeFilters.basetypes.length === 0) {
+      const currentCacheKey = generateCacheKey(activeFilters)
+      if (parentCacheKey === currentCacheKey && filterCache[currentCacheKey]) {
+        addDebugLog('Parent data same as current data, using processedData', 'success')
+        setParentCallData(filterCache[currentCacheKey])
+        return filterCache[currentCacheKey]
+      }
+    }
+
     // Check if we already have parent data
     if (filterCache[parentCacheKey]) {
       addDebugLog('Parent call data found in cache', 'success', { parentCacheKey })
@@ -245,20 +381,45 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     const groupTotals = {}
     const groupItems = {}
 
-    Object.keys(attributeGroups).forEach(attribute => {
-      const basetypes = attributeGroups[attribute]
+    const hasGroups = attributeGroups && Object.keys(attributeGroups).length > 0
+
+    if (hasGroups) {
+      // Grouped category - process each attribute group
+      Object.keys(attributeGroups).forEach(attribute => {
+        const basetypes = attributeGroups[attribute]
+        let total = 0
+        const items = []
+
+        basetypes.forEach(basetypeName => {
+          const found = rawBasetypes.find(b => b.name === basetypeName)
+          if (found) {
+            total += found.count
+            items.push({
+              ...found,
+              percentageOfGroup: 0 // Will calculate after we have total
+            })
+          }
+        })
+
+        // Calculate percentage of group
+        items.forEach(item => {
+          item.percentageOfGroup = total > 0 ? parseFloat(((item.count / total) * 100).toFixed(1)) : 0
+        })
+
+        groupTotals[attribute] = total
+        groupItems[attribute] = items.sort((a, b) => b.count - a.count)
+      })
+    } else {
+      // Non-grouped category - all basetypes belong to 'ungrouped'
       let total = 0
       const items = []
 
-      basetypes.forEach(basetypeName => {
-        const found = rawBasetypes.find(b => b.name === basetypeName)
-        if (found) {
-          total += found.count
-          items.push({
-            ...found,
-            percentageOfGroup: 0 // Will calculate after we have total
-          })
-        }
+      rawBasetypes.forEach(basetype => {
+        total += basetype.count
+        items.push({
+          ...basetype,
+          percentageOfGroup: 0 // Will calculate after we have total
+        })
       })
 
       // Calculate percentage of group
@@ -266,9 +427,9 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
         item.percentageOfGroup = total > 0 ? parseFloat(((item.count / total) * 100).toFixed(1)) : 0
       })
 
-      groupTotals[attribute] = total
-      groupItems[attribute] = items.sort((a, b) => b.count - a.count)
-    })
+      groupTotals['ungrouped'] = total
+      groupItems['ungrouped'] = items.sort((a, b) => b.count - a.count)
+    }
 
     return {
       category,
@@ -287,19 +448,32 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
   useEffect(() => {
     if (activeFilters.snapshotId && hasActiveFilters()) {
       executeFilterPipeline()
-      // Ensure parent call data is loaded for percentage calculations
-      if (activeFilters.items.length > 0) {
+      // Ensure parent call data is loaded for percentage calculations (only when basetypes selected)
+      if (activeFilters.items.length > 0 && activeFilters.basetypes.length > 0) {
         ensureParentCallData()
       }
     } else if (activeFilters.snapshotId) {
       setProcessedData(generateInitialData())
     }
-  }, [activeFilters])
+
+    // Auto-expand single group when no basetype selection active
+    if (activeFilters.items.length > 0 && activeFilters.basetypes.length === 0 && processedData?.itembasetypes) {
+      const groups = processedData.itembasetypes[0]?.data
+      if (groups && groups.length === 1) {
+        const singleGroupKey = groups[0].groupKey
+        if (!expandedGroups.has(singleGroupKey)) {
+          addDebugLog(`Auto-expanding single group: ${groups[0].name}`, 'info')
+          setExpandedGroups(new Set([singleGroupKey]))
+        }
+      }
+    }
+  }, [activeFilters, processedData])
 
   const generateCacheKey = (filters) => {
     const parts = [filters.snapshotId]
     if (filters.items.length > 0) parts.push(`items:${filters.items.sort().join(',')}`)
     if (filters.basetypes.length > 0) parts.push(`basetypes:${filters.basetypes.sort().join(',')}`)
+    if (filters.modifiers.length > 0) parts.push(`modifiers:${filters.modifiers.sort().join(',')}`)
     if (filters.skills.length > 0) parts.push(`skills:${filters.skills.sort().join(',')}`)
     return parts.join('|')
   }
@@ -320,16 +494,19 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
   const generateInitialData = () => {
     // Calculate true total consistently
     const trueTotal = calculateTrueTotal(initialData)
-    
+
     // Process items (rare items only)
     const items = processItemsDimension(initialData, dictionaries, trueTotal)
-    
+
+    // Process skills
+    const skills = processSkillsDimension(initialData, dictionaries, trueTotal)
+
     return {
       trueTotal,
       items,
       itembasetypes: [],
       itemmods: [],
-      skills: []
+      skills
     }
   }
 
@@ -342,7 +519,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
   const processItemsDimension = (data, dicts, trueTotal) => {
     const itemsDimensions = data.result.dimensions?.filter(d => d.id === 'items') || []
-    
+
     return itemsDimensions.map(dimension => {
       const dictionary = dicts[dimension.dictionaryId]
       if (!dictionary) return null
@@ -356,7 +533,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
       }))
 
       // Filter to only include rare items
-      const rareItems = processedData.filter(item => 
+      const rareItems = processedData.filter(item =>
         item.name && item.name.startsWith('Rare ')
       )
 
@@ -364,6 +541,29 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
         id: dimension.id,
         dictionaryId: dimension.dictionaryId,
         data: rareItems.sort((a, b) => b.count - a.count)
+      }
+    }).filter(Boolean)
+  }
+
+  const processSkillsDimension = (data, dicts, trueTotal) => {
+    const skillsDimensions = data.result.dimensions?.filter(d => d.id === 'skills') || []
+
+    return skillsDimensions.map(dimension => {
+      const dictionary = dicts[dimension.dictionaryId]
+      if (!dictionary) return null
+
+      const processedData = dimension.counts.map(count => ({
+        key: count.key,
+        name: dictionary.values[count.key] || `Key_${count.key}`,
+        count: count.count,
+        percentage: parseFloat(((count.count / trueTotal) * 100).toFixed(1)),
+        resolved: !!dictionary.values[count.key]
+      }))
+
+      return {
+        id: dimension.id,
+        dictionaryId: dimension.dictionaryId,
+        data: processedData.sort((a, b) => b.count - a.count).slice(0, 50)
       }
     }).filter(Boolean)
   }
@@ -418,6 +618,12 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
           [cacheKey]: result
         }))
         setProcessedData(result)
+
+        // If no basetypes selected, current data IS the parent data
+        if (activeFilters.basetypes.length === 0) {
+          setParentCallData(result)
+          addDebugLog('Set parent data to current data (no basetypes)', 'success')
+        }
       } else {
         addDebugLog(`No result to cache for: ${cacheKey}`, 'warning')
       }
@@ -445,22 +651,18 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     const selectedBasetypes = activeFilters.basetypes
 
     // Check which basetypes are already cached individually
-    const cachedResults = []
+    const cachedRawResults = [] // Store RAW API results, not aggregated
     const uncachedBasetypes = []
 
     for (const basetype of selectedBasetypes) {
-      const basetypeCacheKey = generateCacheKey({
+      const basetypeCacheKey = `raw_basetype_${generateCacheKey({
         ...activeFilters,
         basetypes: [basetype]
-      })
+      })}`
 
       if (filterCache[basetypeCacheKey]) {
         addDebugLog(`Individual cache hit: ${basetype}`, 'success')
-        cachedResults.push({
-          basetype,
-          cached: true,
-          data: filterCache[basetypeCacheKey]
-        })
+        cachedRawResults.push(filterCache[basetypeCacheKey])
       } else {
         addDebugLog(`Individual cache miss: ${basetype}`, 'info')
         uncachedBasetypes.push(basetype)
@@ -469,121 +671,74 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
     addDebugLog(`Basetype caching summary`, 'info', {
       total: selectedBasetypes.length,
-      cached: cachedResults.length,
+      cached: cachedRawResults.length,
       needToFetch: uncachedBasetypes.length
     })
 
     setCurrentOperation(`Fetching ${uncachedBasetypes.length}/${selectedBasetypes.length} basetypes...`)
     setLoadingProgress({ current: 0, total: uncachedBasetypes.length })
 
-    // Handle skills - for each skill, aggregate across all basetypes
-    if (activeFilters.skills.length > 0) {
-      const allResults = []
-      const allErrors = []
+    // Fetch uncached basetypes with all skills combined (single API call per basetype with AND gate)
+    try {
+      let freshResults = []
 
-      for (let skillIndex = 0; skillIndex < activeFilters.skills.length; skillIndex++) {
-        const skillName = activeFilters.skills[skillIndex]
-        setCurrentOperation(`Aggregating ${skillName} across ${uncachedBasetypes.length} uncached basetypes...`)
+      if (uncachedBasetypes.length > 0) {
+        // Pass all modifiers and skills as arrays
+        const modsDesc = activeFilters.modifiers.length > 0 ? ` + ${activeFilters.modifiers.join(' + ')}` : ''
+        const skillsDesc = activeFilters.skills.length > 0 ? ` + ${activeFilters.skills.join(' + ')}` : ''
+        const filtersDesc = `${modsDesc}${skillsDesc}`
+        setCurrentOperation(`Fetching basetypes${filtersDesc}...`)
 
-        try {
-          const { results, errors } = await aggregateBasetypes(
-            activeFilters.snapshotId,
-            category,
-            null,
-            uncachedBasetypes,
-            skillName,
-            (current, total, basetype) => {
-              const globalCurrent = skillIndex * uncachedBasetypes.length + current
-              const globalTotal = activeFilters.skills.length * uncachedBasetypes.length
-              setLoadingProgress({ current: globalCurrent, total: globalTotal })
-              setCurrentOperation(`${skillName} + ${basetype} (${globalCurrent}/${globalTotal})`)
-            }
-          )
+        const { results, errors } = await aggregateBasetypes(
+          activeFilters.snapshotId,
+          category,
+          null,
+          uncachedBasetypes,
+          activeFilters.modifiers.length > 0 ? activeFilters.modifiers : null,
+          activeFilters.skills.length > 0 ? activeFilters.skills : null,
+          (current, total, basetype) => {
+            setLoadingProgress({ current, total })
+            setCurrentOperation(`${basetype}${filtersDesc} (${current}/${total})`)
+          }
+        )
 
-          // Cache individual basetype results
-          results.forEach(result => {
-            const individualCacheKey = generateCacheKey({
-              ...activeFilters,
-              basetypes: [result.basetype]
-            })
-            // Store the raw result for this individual basetype
-            setFilterCache(prev => ({
-              ...prev,
-              [individualCacheKey]: { /* we'd need to structure this properly */ }
-            }))
-          })
+        // Cache individual RAW basetype results
+        results.forEach(result => {
+          const individualCacheKey = `raw_basetype_${generateCacheKey({
+            ...activeFilters,
+            basetypes: [result.basetype]
+          })}`
+          // Store the RAW result for this individual basetype
+          setFilterCache(prev => ({
+            ...prev,
+            [individualCacheKey]: result
+          }))
+          addDebugLog(`Cached RAW basetype: ${result.basetype}`, 'success')
+        })
 
-          // Tag results with skill info
-          const taggedResults = results.map(r => ({ ...r, skill: skillName }))
-          allResults.push(...taggedResults)
-          allErrors.push(...errors)
-
-        } catch (err) {
-          allErrors.push({ skill: skillName, error: err.message })
-        }
+        freshResults = results
+        setErrors(errors)
       }
 
-      // Merge cached and new results
-      const combinedResults = [...allResults]
+      // Merge cached RAW results with fresh results, THEN aggregate
+      const allRawResults = [...cachedRawResults, ...freshResults]
 
-      if (combinedResults.length > 0) {
-        const aggregatedData = aggregateBasetypeResults(combinedResults, activeFilters)
+      addDebugLog(`Aggregating combined results`, 'info', {
+        cachedCount: cachedRawResults.length,
+        freshCount: freshResults.length,
+        totalCount: allRawResults.length
+      })
+
+      if (allRawResults.length > 0) {
+        const aggregatedData = aggregateBasetypeResults(allRawResults, activeFilters)
         return aggregatedData
       }
-      setErrors(allErrors)
+
       return null
 
-    } else {
-      // No skills - just aggregate basetypes
-      try {
-        if (uncachedBasetypes.length > 0) {
-          const { results, errors } = await aggregateBasetypes(
-            activeFilters.snapshotId,
-            category,
-            null,
-            uncachedBasetypes,
-            null,
-            (current, total, basetype) => {
-              setLoadingProgress({ current, total })
-              setCurrentOperation(`${basetype} (${current}/${total})`)
-            }
-          )
-
-          // Cache individual basetype results
-          results.forEach(result => {
-            const individualCacheKey = generateCacheKey({
-              ...activeFilters,
-              basetypes: [result.basetype]
-            })
-            const individualResult = aggregateBasetypeResults([result], activeFilters)
-            setFilterCache(prev => ({
-              ...prev,
-              [individualCacheKey]: individualResult
-            }))
-            addDebugLog(`Cached individual basetype: ${result.basetype}`, 'success')
-          })
-
-          // Merge with cached results
-          const allResults = [...results]
-
-          if (allResults.length > 0 || cachedResults.length > 0) {
-            // Need to reconstruct from cache properly
-            const aggregatedData = aggregateBasetypeResults(allResults, activeFilters)
-            return aggregatedData
-          }
-          setErrors(errors)
-          return null
-        } else {
-          // All cached - use cached results
-          addDebugLog(`All basetypes cached - using cached data`, 'success')
-          // Need to aggregate cached results properly
-          return cachedResults[0]?.data || null
-        }
-
-      } catch (err) {
-        setErrors([{ error: err.message }])
-        return null
-      }
+    } catch (err) {
+      setErrors([{ error: err.message }])
+      return null
     }
   }
 
@@ -610,7 +765,8 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
         const result = await fetchSkillFilteredData(
           filters.snapshotId,
           call.item,
-          call.skill
+          call.modifiers,
+          call.skills
         )
         addDebugLog(`API call succeeded: ${call.description} - ${result.data.result.total} builds`, 'success', {
           call,
@@ -629,6 +785,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
     if (results.length > 0) {
       const aggregatedData = aggregateFilterResults(results)
+      console.log('aggregateFilterResults returned:', aggregatedData) // ADD THIS
       return aggregatedData
     }
 
@@ -637,63 +794,117 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
   const extractCategoryFromItem = (item) => {
     if (!item) return null
-    
+
+    // Extract category from item name (e.g., "Rare Body Armour" -> "Body Armour")
+    // Keep original format with spaces for API calls
+    const match = item.match(/^Rare (.+)$/)
+    if (!match) return null
+
+    const categoryName = match[1]
+
+    // Map display names to internal category names (only for armor which has special keys)
     const categoryMap = {
-      'Rare Body Armour': 'BodyArmour',
-      'Rare Boots': 'Boots',
-      'Rare Gloves': 'Gloves',
-      'Rare Helmet': 'Helmet',
-      'Rare Shield': 'Shield'
+      'Body Armour': 'BodyArmour',
+      'Boots': 'Boots',
+      'Gloves': 'Gloves',
+      'Helmet': 'Helmet',
+      'Shield': 'Shield'
     }
-    
-    return categoryMap[item]
+
+    // For armor, return special key; for everything else, return as-is with spaces
+    return categoryMap[categoryName] || categoryName
   }
 
   const reconstructBasetypeGroups = (filters, totalBuilds) => {
     const item = filters.items[0]
     const category = extractCategoryFromItem(item)
-    
-    if (!category) return []
-    
-    // Get all possible groups for this category
-    const categoryMap = {
-      'BodyArmour': 'Body Armour',
-      'Boots': 'Boots',
-      'Gloves': 'Gloves', 
-      'Helmet': 'Helmets',
-      'Shield': 'Shield'
-    }
-    
-    const dataCategory = categoryMap[category]
-    if (!dataCategory) return []
-    
-    // Create artificial groups showing all possible groups
-    const allGroups = ['Dex', 'DexInt', 'Int', 'Str', 'StrDex', 'StrInt']
-    
-    const groupData = allGroups.map(attribute => {
-      // Check if this group contains any of our selected basetypes
-      const isSelected = isGroupSelected(attribute, category, filters.basetypes)
 
-      return {
-        key: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
-        name: `${attribute} ${category}`,
-        count: isSelected ? totalBuilds : 0,
-        percentage: isSelected ? 100.0 : 0.0,
+    if (!category) return []
+
+    // Check if this category has attribute groups defined
+    const attributeGroups = getAttributeGroupsForCategory(category)
+    const hasGroups = attributeGroups && Object.keys(attributeGroups).length > 0
+
+    if (hasGroups) {
+      // Grouped category (Helmets, Gloves, etc.)
+      const categoryMap = {
+        'BodyArmour': 'Body Armour',
+        'Boots': 'Boots',
+        'Gloves': 'Gloves',
+        'Helmet': 'Helmets',
+        'Shield': 'Shield'
+      }
+
+      const dataCategory = categoryMap[category]
+      if (!dataCategory) return []
+
+      // Create artificial groups showing all possible groups
+      const allGroups = ['Dex', 'DexInt', 'Int', 'Str', 'StrDex', 'StrInt']
+
+      const groupData = allGroups.map(attribute => {
+        // Check if this group contains any of our selected basetypes
+        const isSelected = isGroupSelected(attribute, category, filters.basetypes)
+
+        return {
+          key: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
+          name: `${attribute} ${category}`,
+          count: isSelected ? totalBuilds : 0,
+          percentage: isSelected ? 100.0 : 0.0,
+          resolved: true,
+          isGroup: true,
+          groupKey: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
+          groupItems: [], // We don't need the individual items for display
+          attribute,
+          category,
+          isSelected
+        }
+      })
+
+      return [{
+        id: `itembasetypes-${category}`,
+        dictionaryId: 'artificial',
+        data: groupData
+      }]
+    } else {
+      // Non-grouped category (Bows, Rings, etc.) - create single group with category name
+      const isSelected = filters.basetypes.length > 0
+
+      // Get friendly category name (e.g., "Bow", "Ring", etc.)
+      const friendlyName = category
+
+      // All weapons use 'Weapon' dimension ID in the API
+      const weaponTypes = [
+        'Bow', 'Claw', 'Dagger', 'One Handed Axe', 'One Handed Mace', 'One Handed Sword',
+        'Rune Dagger', 'Sceptre', 'Staff', 'Two Handed Axe', 'Two Handed Mace',
+        'Two Handed Sword', 'Wand', 'Warstaff', 'Fishing Rod'
+      ]
+
+      // Use 'Weapon' for all weapons to match API dimension ID, otherwise use category as-is
+      const dimensionCategory = weaponTypes.includes(category) ? 'Weapon' : category
+
+      // For groupKey, also use generic 'weapon' for all weapon types to maintain consistency
+      const groupKeyCategory = weaponTypes.includes(category) ? 'weapon' : category.toLowerCase()
+
+      const ungroupedGroup = {
+        key: `group_ungrouped_${groupKeyCategory}`,
+        name: friendlyName,
+        count: isSelected ? totalBuilds : totalBuilds, // Always show total count
+        percentage: isSelected ? 100.0 : 100.0, // Always show 100%
         resolved: true,
         isGroup: true,
-        groupKey: `group_${attribute.toLowerCase()}_${category.toLowerCase()}`,
-        groupItems: [], // We don't need the individual items for display
-        attribute,
+        groupKey: `group_ungrouped_${groupKeyCategory}`,
+        groupItems: [],
+        attribute: 'ungrouped',
         category,
         isSelected
       }
-    })
-    
-    return [{
-      id: `itembasetypes-${category}`,
-      dictionaryId: 'artificial',
-      data: groupData
-    }]
+
+      return [{
+        id: `itembasetypes-${dimensionCategory}`,
+        dictionaryId: 'artificial',
+        data: [ungroupedGroup]
+      }]
+    }
   }
 
   const isGroupSelected = (attribute, category, selectedBasetypes) => {
@@ -763,56 +974,31 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
 
   const generateApiCalls = (filters) => {
     const calls = []
-    
+
+    // Generate filter descriptions
+    const modsDesc = filters.modifiers.length > 0 ? ` + ${filters.modifiers.join(' + ')}` : ''
+    const skillsDesc = filters.skills.length > 0 ? ` + ${filters.skills.join(' + ')}` : ''
+    const filtersDesc = `${modsDesc}${skillsDesc}`
+
     if (filters.basetypes.length > 0) {
       const item = filters.items[0]
-      
       filters.basetypes.forEach(basetype => {
-        if (filters.skills.length > 0) {
-          filters.skills.forEach(skill => {
-            calls.push({
-              item,
-              basetype,
-              skill,
-              description: `${basetype} + ${skill}`
-            })
-          })
-        } else {
-          calls.push({
-            item,
-            basetype,
-            skill: null,
-            description: basetype
-          })
-        }
+        calls.push({
+          item,
+          basetype,
+          modifiers: filters.modifiers.length > 0 ? filters.modifiers : null,
+          skills: filters.skills.length > 0 ? filters.skills : null,
+          description: `${basetype}${filtersDesc}`
+        })
       })
     } else if (filters.items.length > 0) {
       filters.items.forEach(item => {
-        if (filters.skills.length > 0) {
-          filters.skills.forEach(skill => {
-            calls.push({
-              item,
-              basetype: null,
-              skill,
-              description: `${item} + ${skill}`
-            })
-          })
-        } else {
-          calls.push({
-            item,
-            basetype: null,
-            skill: null,
-            description: item
-          })
-        }
-      })
-    } else if (filters.skills.length > 0) {
-      filters.skills.forEach(skill => {
         calls.push({
-          item: null,
+          item,
           basetype: null,
-          skill,
-          description: skill
+          modifiers: filters.modifiers.length > 0 ? filters.modifiers : null,
+          skills: filters.skills.length > 0 ? filters.skills : null,
+          description: `${item}${filtersDesc}`
         })
       })
     }
@@ -994,6 +1180,12 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
           }, [])
 
           existing.data = uniqueData.sort((a, b) => b.count - a.count).slice(0, 50)
+          // Also merge rawData if this is itembasetypes
+          if (dimension.id.startsWith('itembasetypes-') && rawDataMap.has(dimension.id)) {
+            const existingRaw = existing.rawData || []
+            const newRaw = rawDataMap.get(dimension.id) || []
+            existing.rawData = [...existingRaw, ...newRaw]
+          }
         } else {
           dimensionMap.set(dimension.id, {
             id: dimension.id,
@@ -1013,14 +1205,35 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     const categoryMap = {
       'BodyArmour': 'Body Armour',
       'Boots': 'Boots',
-      'Gloves': 'Gloves', 
+      'Gloves': 'Gloves',
       'Helmet': 'Helmets',
       'Shield': 'Shield'
     }
-    
+
     const dataCategory = categoryMap[category]
-    if (!dataCategory) return data
-    
+
+    // If category not in map, it's a non-grouped category (Bow, Ring, etc.)
+    if (!dataCategory) {
+      // Create single "Ungrouped" group containing all basetypes
+      const totalCount = data.reduce((sum, item) => sum + item.count, 0)
+      const totalPercentage = data.reduce((sum, item) => sum + item.percentage, 0)
+
+      return [{
+        name: `${category}`,
+        count: totalCount,
+        percentage: parseFloat(totalPercentage.toFixed(1)),
+        resolved: true,
+        isGroup: true,
+        groupKey: `group_ungrouped_${category.toLowerCase()}`,
+        groupItems: data.map(item => ({
+          ...item,
+          percentageOfGroup: totalCount > 0 ? parseFloat(((item.count / totalCount) * 100).toFixed(1)) : 0
+        })),
+        attribute: 'ungrouped',
+        category
+      }]
+    }
+
     const attributeGroups = {
       "Body Armour": {
         "Dex": ["Syndicate's Garb", "Astral Leather", "Supreme Leather", "Assassin's Garb", "Zodiac Leather", "Exquisite Leather", "Destiny Leather", "Sharkskin Tunic", "Cutthroat's Garb", "Coronal Leather", "Glorious Leather", "Frontier Leather", "Eelskin Tunic", "Thief's Garb", "Sun Leather", "Full Leather", "Wild Leather", "Buckskin Tunic", "Strapped Leather", "Shabby Jerkin"],
@@ -1066,7 +1279,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     
     const groups = attributeGroups[dataCategory]
     if (!groups) return data
-    
+
     const groupedItems = []
     const ungroupedItems = [...data]
     
@@ -1123,6 +1336,15 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
       skills: prev.skills.includes(skill.name)
         ? prev.skills.filter(s => s !== skill.name)
         : [...prev.skills, skill.name]
+    }))
+  }
+
+  const handleModifierClick = (modifier) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      modifiers: prev.modifiers.includes(modifier.name)
+        ? prev.modifiers.filter(m => m !== modifier.name)
+        : [...prev.modifiers, modifier.name]
     }))
   }
 
@@ -1203,18 +1425,54 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     }
 
     // Toggle in existing selection (manual checkbox change in selection mode)
-    setPendingSelections(prev => {
-      const newItems = prev.items.includes(basetype)
-        ? prev.items.filter(item => item !== basetype)
-        : [...prev.items, basetype]
+    const newItems = pendingSelections.items.includes(basetype)
+      ? pendingSelections.items.filter(item => item !== basetype)
+      : [...pendingSelections.items, basetype]
 
-      addDebugLog(`Toggled basetype: ${basetype}`, 'info', { newItems })
+    addDebugLog(`Toggled basetype: ${basetype}`, 'info', { newItems })
 
-      return {
-        ...prev,
-        items: newItems
-      }
+    // Update pending selections
+    setPendingSelections(prev => ({
+      ...prev,
+      items: newItems
+    }))
+
+    // Check if ALL individual basetypes in newItems are cached
+    const allCached = newItems.every(bt => {
+      const individualCacheKey = `raw_basetype_${generateCacheKey({
+        ...activeFilters,
+        basetypes: [bt]
+      })}`
+      return filterCache[individualCacheKey]
     })
+
+    if (allCached && newItems.length > 0) {
+      // All individual components are cached - auto-apply
+      addDebugLog(`Auto-applying: all ${newItems.length} basetypes individually cached`, 'success', { newItems })
+      setActiveFilters({ ...activeFilters, basetypes: newItems })
+      saveCustomSelections(category, groupKey, newItems)
+    } else if (newItems.length === 0) {
+      // Empty selection - auto-apply to clear
+      addDebugLog(`Auto-applying: empty selection`, 'info')
+      setActiveFilters({ ...activeFilters, basetypes: [] })
+      saveCustomSelections(category, groupKey, [])
+    } else {
+      // Some basetypes not cached - need to fetch
+      const cachedCount = newItems.filter(bt => {
+        const individualCacheKey = `raw_basetype_${generateCacheKey({
+          ...activeFilters,
+          basetypes: [bt]
+        })}`
+        return filterCache[individualCacheKey]
+      }).length
+
+      addDebugLog(`Pending: ${newItems.length - cachedCount}/${newItems.length} basetypes need fetching`, 'info', {
+        newItems,
+        cachedCount,
+        needToFetch: newItems.length - cachedCount
+      })
+      // Don't apply, let user click Apply button
+    }
   }
 
   // Apply pending selections
@@ -1245,19 +1503,37 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
     setPendingSelections(null)
   }
 
-  // Reset to top 6 for current group
+  // Reset to top 6 by count for current group
   const resetToTopSix = () => {
     if (!pendingSelections) return
 
-    const { category, attribute } = pendingSelections
-    const defaultSelections = getDefaultSelections(category, attribute)
+    const { category, attribute, groupKey } = pendingSelections
+    const top6 = getTop6ByCount(category, attribute)
 
-    addDebugLog(`Resetting to top 6`, 'info', { defaultSelections })
+    addDebugLog(`Resetting to top 6 by count`, 'info', { top6 })
 
+    // Update pending selections
     setPendingSelections(prev => ({
       ...prev,
-      items: defaultSelections
+      items: top6
     }))
+
+    // Check if all are cached
+    const allCached = top6.every(bt => {
+      const individualCacheKey = `raw_basetype_${generateCacheKey({
+        ...activeFilters,
+        basetypes: [bt]
+      })}`
+      return filterCache[individualCacheKey]
+    })
+
+    if (allCached && top6.length > 0) {
+      // Auto-apply
+      addDebugLog(`Auto-applying reset: all ${top6.length} basetypes cached`, 'success')
+      setActiveFilters({ ...activeFilters, basetypes: top6 })
+      saveCustomSelections(category, groupKey, top6)
+    }
+    // Otherwise Apply button will show
   }
 
   const handleClearFilters = () => {
@@ -1324,6 +1600,11 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                     Basetypes: {activeFilters.basetypes.length} selected
                   </span>
                 )}
+                {activeFilters.modifiers.map(modifier => (
+                  <span key={modifier} className="filter-tag">
+                    Modifier: {modifier}
+                  </span>
+                ))}
                 {activeFilters.skills.map(skill => (
                   <span key={skill} className="filter-tag">
                     Skill: {skill}
@@ -1410,7 +1691,7 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                             return (
                               <div key={index} className="group-container">
                                 {/* Group Header Row */}
-                                <div className={`data-item group-item ${group.isSelected ? 'selected-skill' : ''}`}>
+                                <div style={{ display: 'flex', alignItems: 'stretch' }}>
                                   {/* Expand/Collapse Button */}
                                   <button
                                     className="expand-button"
@@ -1418,23 +1699,15 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                                       e.stopPropagation()
                                       toggleGroupExpansion(group.groupKey)
                                     }}
-                                    style={{
-                                      background: 'none',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      fontSize: '18px',
-                                      padding: '0 8px 0 0',
-                                      color: '#9ca3af'
-                                    }}
                                   >
                                     {isExpanded ? '▼' : '▶'}
                                   </button>
 
-                                  {/* Group Name (clickable) */}
+                                  {/* Group Card (clickable) */}
                                   <div
-                                    className="clickable"
+                                    className={`data-item group-item ${group.isSelected ? 'selected-skill' : ''} clickable`}
                                     onClick={() => handleGroupClick(group)}
-                                    style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '10px' }}
+                                    style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '10px', margin: 0 }}
                                   >
                                     <span className="item-name">{group.name}</span>
                                     <span className="item-count">{group.count}</span>
@@ -1456,7 +1729,10 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                                         <div
                                           key={btIndex}
                                           className={`data-item nested-item ${isSelected ? 'selected-skill' : ''}`}
-                                          onClick={() => handleBasetypeToggle(basetype.name, group.groupKey, basetypeData.category, group.attribute)}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleBasetypeToggle(basetype.name, group.groupKey, basetypeData.category, group.attribute)
+                                          }}
                                           style={{
                                             cursor: 'pointer'
                                           }}
@@ -1551,7 +1827,11 @@ const AnalysisOverlay = ({ isOpen, onClose, snapshotId, initialData, dictionarie
                   processedData?.itemmods?.map((dimension, dimIndex) => (
                     <div key={dimIndex} className="dimension-section">
                       {dimension.data.map((item, index) => (
-                        <div key={index} className="data-item">
+                        <div
+                          key={index}
+                          className={`data-item clickable ${activeFilters.modifiers.includes(item.name) ? 'selected-skill' : ''}`}
+                          onClick={() => handleModifierClick(item)}
+                        >
                           <span className="item-name">{item.name}</span>
                           <span className="item-count">{item.count}</span>
                           <span className="item-percentage">{item.percentage}%</span>
