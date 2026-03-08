@@ -451,7 +451,7 @@
         async function fetchAndAnalyze(rareItem) {
             try {
                 const snapshotId = document.getElementById('snapshotId').value.trim();
-                const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=keepers&type=exp`;
+                const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=mirage&type=exp`;
                 const proxyUrl = apiUrl.replace('https://poe.ninja', 'https://roggler-production.up.railway.app/api');
                 
                 addMessage(`Fetching data for ${rareItem}...`, 'info');
@@ -898,7 +898,7 @@
                         };
                         const rareItemType = rareItemTypeMap[category] || `Rare ${category}`;
                         const dimensionKey = `itembasetypes-${category}`;
-                        const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItemType)}&${dimensionKey}=${encodeURIComponent(basetype)}&overview=keepers&type=exp`;
+                        const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItemType)}&${dimensionKey}=${encodeURIComponent(basetype)}&overview=mirage&type=exp`;
                         const proxyUrl = apiUrl.replace('https://poe.ninja', 'https://roggler-production.up.railway.app/api');
                         
                         console.log(`🌐 [${basetype}] Making fetch to:`, proxyUrl);
