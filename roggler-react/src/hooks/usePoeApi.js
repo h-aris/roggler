@@ -59,7 +59,7 @@ const usePoeApi = () => {
       }
       
       await waitForProtobuf()
-      const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?overview=keepers&type=exp`
+      const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?overview=mirage&type=exp`
       const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
       
       const response = await fetch(proxyUrl)
@@ -127,7 +127,7 @@ const usePoeApi = () => {
       }
       
       await waitForProtobuf()
-      const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=keepers&type=exp`
+      const apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?items=${encodeURIComponent(rareItem)}&overview=mirage&type=exp`
       const proxyUrl = apiUrl.replace('https://poe.ninja', RAILWAY_API_BASE)
       
       const response = await fetch(proxyUrl)
@@ -237,7 +237,7 @@ const usePoeApi = () => {
       }
 
       // Always end with overview and type
-      params.push('overview=keepers')
+      params.push('overview=mirage')
       params.push('type=exp')
 
       apiUrl += params.join('&')
@@ -349,7 +349,7 @@ const usePoeApi = () => {
         }
 
         // Always end with overview and type
-        params.push('overview=keepers')
+        params.push('overview=mirage')
         params.push('type=exp')
 
         let apiUrl = `https://poe.ninja/poe1/api/builds/${snapshotId}/search?${params.join('&')}`
